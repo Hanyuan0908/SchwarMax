@@ -20,7 +20,7 @@ parameter space with MCMC.
 This code accompanies the paper:
 
 > **SchwarMAX: a GPU-friendly Schwarzschild orbit-superposition modelling framework**
-> H. Zhang, D. Chemaly, E. Vasiliev, V. Belokurov, N. W. Evans, J. Shen (2026), MNRAS, accepted.
+> H. Zhang, D. Chemaly, E. Vasiliev, V. Belokurov, N. W. Evans, J. Shen (2026), submitted to MNRAS.
 
 ---
 
@@ -189,7 +189,7 @@ If you use SchwarMAX in your work, please cite the accompanying paper:
              modelling framework},
   journal = {Monthly Notices of the Royal Astronomical Society},
   year    = {2026},
-  note    = {accepted}
+  note    = {submitted}
 }
 ```
 
