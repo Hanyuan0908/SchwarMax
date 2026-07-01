@@ -195,5 +195,5 @@ If you use SchwarMAX in your work, please cite the accompanying paper:
 
 ## License
 
-Please contact the authors regarding reuse. Correspondence: HanYuan Zhang
+Released under the [MIT License](LICENSE). Correspondence: HanYuan Zhang
 (hz420@cam.ac.uk), David Chemaly (dc824@cam.ac.uk).
