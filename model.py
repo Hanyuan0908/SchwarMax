@@ -546,11 +546,20 @@ def model_deltaChi2_jackknife(density_func, potential_func, chi2_func,
             w_rzphi = jnp.sqrt(5.0), w_xy = jnp.sqrt(5.0), w_h = jnp.sqrt(1.0)
         )
 
+    # `chi2_func` expects every (data, model, sigma) triple to be in the
+    # SAME units. The NNLS internal arrays (`y_xy`, `sig_xy`) were divided
+    # by `light_to_mass_ratio * mean_mass_per_orb` for the solver — but
+    # the per-replicate prediction `d2d_b` is multiplied BACK to
+    # luminosity below. To keep units consistent we expose y_xy and
+    # sig_xy in luminosity too. The 3-D density and h1..h4 are unchanged.
+    lum_factor  = mean_mass_per_orb * light_to_mass_ratio
+    y_xy_lum    = y_xy * lum_factor                                       # (n_bins,)
+
     # Pre-broadcast the shared data arrays once at batch size; cheap, and
     # avoids redoing the broadcast inside every batch.
     y_Rzphi_b   = jnp.broadcast_to(y_Rzphi,   (batch_size,) + y_Rzphi.shape)
     sig_Rzphi_b = jnp.broadcast_to(sig_Rzphi, (batch_size,) + sig_Rzphi.shape)
-    y_xy_b      = jnp.broadcast_to(y_xy,      (batch_size,) + y_xy.shape)
+    y_xy_b      = jnp.broadcast_to(y_xy_lum,  (batch_size,) + y_xy_lum.shape)
     y_h1_b      = jnp.broadcast_to(y_h1,      (batch_size,) + y_h1.shape)
     y_h2_b      = jnp.broadcast_to(y_h2,      (batch_size,) + y_h2.shape)
     y_h3_b      = jnp.broadcast_to(y_h3,      (batch_size,) + y_h3.shape)
@@ -566,12 +575,13 @@ def model_deltaChi2_jackknife(density_func, potential_func, chi2_func,
         d3d_b, d2d_b, h1_b, h2_b, h3_b, h4_b, _, _ = compute_model_single_vmap(
             weights_b, A_Rzphi, A_xy, A_h1, A_h2, A_h3, A_h4, gamma_kin, v0, s,
         )
-        d2d_b = d2d_b * mean_mass_per_orb * light_to_mass_ratio          # luminosity units
+        d2d_b      = d2d_b * lum_factor                                  # luminosity units
+        sxy_lum    = sxy   * lum_factor                                  # match y_xy_b units
 
         # User's chi2_func, vmapped over the batch axis.
         return jax.vmap(chi2_func, in_axes=(0,)*18)(
             y_Rzphi_b, d3d_b, sig_Rzphi_b,
-            y_xy_b,    d2d_b, sxy,
+            y_xy_b,    d2d_b, sxy_lum,
             y_h1_b,    h1_b,  s1,
             y_h2_b,    h2_b,  s2,
             y_h3_b,    h3_b,  s3,
@@ -594,12 +604,12 @@ def model_deltaChi2_jackknife(density_func, potential_func, chi2_func,
 
 
 @partial(jax.jit, static_argnames=('density_func', 'potential_func', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter'))
-def model_diagnostic(density_func, potential_func,
-                     params_halo_pot, params_disk_rho, dict_data, num_Vbin,
-                     Rzphi_n_tot=360, Rzphi_n_grid = jnp.array([10,6,6]), Rzphi_lim_grid = jnp.array([[0,10.],[-3,3],[-jnp.pi, jnp.pi]]),
-                     xy_lim_grid = jnp.array([[-10.,10.],[-3.,3.]]), xy_n_grid = jnp.array([60,40]),
-                     nnls_maxiter=200, regularization = 1.0,
-                     ):
+def get_model_with_orbit(density_func, potential_func,
+                        params_halo_pot, params_disk_rho, dict_data, num_Vbin,
+                        Rzphi_n_tot=360, Rzphi_n_grid = jnp.array([10,6,6]), Rzphi_lim_grid = jnp.array([[0,10.],[-3,3],[-jnp.pi, jnp.pi]]),
+                        xy_lim_grid = jnp.array([[-10.,10.],[-3.,3.]]), xy_n_grid = jnp.array([60,40]),
+                        nnls_maxiter=200, regularization = 1.0,
+                        ):
     """
     Same forward model as `build_model`, but the integrator also stores
     every orbit's full 6-D phase-space trajectory. Returns the orbital
