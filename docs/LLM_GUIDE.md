@@ -106,6 +106,35 @@ conversion for you (Section 7.3 below).
 An **older 13-D convention** exists in the sibling `SchwarMAX/`
 codebase. `example_analysis.ipynb` handles both — see pitfall §14.1.
 
+## 4b. Conventions that WILL cost you time if you get them wrong
+
+**Projection.** The kernel actually used (`integrate_adaptive_barred_chunked`) projects
+sky = (x, y), line of sight = z. With `R = Rz(-alpha) Rx(-beta) Rz(-gamma)`:
+**alpha = on-sky position angle, beta = inclination, gamma = bar azimuth.**
+
+**Handedness.** This package seeds **anticlockwise** (Lz > 0) and integrates with **`+Omega_bar`**.
+The mirror pairing (clockwise seeding with `-Omega_bar`) produces an *identical static projection*
+but is **NOT equivalent through the rotating-frame integration**. If you are porting a fit from a
+clockwise/-Omega pipeline, the parity partner flips **both** alpha and gamma — e.g. the validated
+NGC 4371 fit is `(0, 59, 78)` here and `(180, 59, -101)` there. Flipping alpha alone is not enough.
+
+*Diagnostic:* an h1 chi2/bin around 10 on a galaxy that should fit well is the classic signature of
+a mirror-flipped **data registration**. Suspect the data before the model.
+
+**Gauss-Hermite basis.** pPXF's `v0`/`s` are the GH *reference Gaussian* (h1 = h2 = 0 by
+construction), not classical moments. Use `ghmoments.h_to_V_sigma_GH` to convert model h1, h2 back
+to V and sigma for reporting. The classical-moment formula adds a sqrt(3)*s*h3 skewness term and
+mixes conventions. This affects reporting only — chi2 is computed on h1-h4 directly.
+
+**M/L.** It must go into the **potential** (Gaussian mass = light * M/L), not only into the data
+rescaling. `build_model_acc` derives `light_to_mass_ratio = 1 / params_disk_rho['mass_to_light_ratio']`
+for the 2D data; the 3D mass model is your `density_func`'s job.
+
+**Precision.** float64 is fine and is what the acceptance tests use on CPU. Do **not** enable
+`jax_enable_x64` for GPU runs — it is both far slower and far more memory-hungry there.
+
+---
+
 ## 5. `dict_data` schema
 
 `utils.load_data_bootstrap(path, filename, N_BOOTSTRAP=100, n_samples=5000)`
@@ -187,7 +216,66 @@ Slot 0 of θ is `logM_10kpc`, slot 3 is `logc_halo` — the forward model
 wants (logM, logRs), so every wrapper starts with a call to
 `logMenc_logc_to_logM_logRs`.
 
-### 6.3 `model.build_model` — forward model for chi²/likelihood
+### 6.3a `model.build_model_acc` — **RECOMMENDED (v2)** forward model
+
+Prefer this over `build_model`. It is strictly more general: `build_model` can only use the
+package's own analytic disc + bar and differentiates the potential to get accelerations, whereas
+`build_model_acc` takes four callables and never branches on what kind of potential it holds — an
+MGE, a CylindricalSpline, an analytic profile, or any sum of these all work through the same code.
+
+```python
+def build_model_acc(density_func, potential_func, acceleration_func, potential_func_axi,
+                    params_halo_pot, params_disk_rho, dict_data, num_Vbin,
+                    jeans_z_int_max=5.0, sigma_frac_3d=0.02, v_sys=0.0,
+                    Rzphi_n_tot=360, Rzphi_n_grid=..., Rzphi_lim_grid=...,
+                    xy_lim_grid=..., xy_n_grid=...,
+                    nnls_maxiter=200, regularization=1.0) -> dict
+```
+
+Returns a dict: `density_3d`, `density_3d_model`, `surface_density`, `h1`–`h4`, `V`, `sigma`,
+`weights`. It does **not** return a log-likelihood — compute chi² yourself from `h1`–`h4`.
+
+**The four callables**
+
+| argument | signature | notes |
+|---|---|---|
+| `density_func` | `(x, y, z, params_baryon) -> rho` | 3D **mass** density. Never reconstruct it from the Laplacian of the potential — numerically unstable, can go negative. |
+| `potential_func` | `(x, y, z, params_baryon, params_halo) -> Phi` | the **FULL** potential; the bar must be present for the orbits. |
+| `acceleration_func` | `(x, y, z, params_baryon, params_halo) -> (ax, ay, az)` | **Required, no fallback.** Splines/MGEs supply their own analytic gradient (`get_acc`). The integrator calls this ~1e9 times per model evaluation, so autodiffing a spline here is not viable. Analytic potentials may use `-jax.grad(pot)`. |
+| `potential_func_axi` | same as `potential_func` | the **m=0** potential, used ONLY by the Jeans velocity seeding, which assumes Phi = Phi(R, z). |
+
+**Choosing `potential_func_axi`** — three strategies, same signature; pick on cost, not on type:
+
+| strategy | cost | error |
+|---|---|---|
+| the object's own m=0 (`evaluate_phi_axisymmetric`) | free | exact |
+| `utils.axisymmetrize_potential(pot, n_phi)` | `n_phi` x per-call | exact only if band-limited below `n_phi` |
+| expand once: `get_phi_m(rho, ..., Mmax=0)` then `evaluate_phi_axisymmetric` | one build, then a lookup | spline error; no aliasing |
+
+Prefer the stored m=0 when the potential has one. **Phi is additive, so axisymmetrise only the
+components that need it** — an axisymmetric disc and a spherical halo are already their own m=0, so
+a mixed model should average the bar alone. Wrapping a whole composite potential in
+`axisymmetrize_potential` evaluates the expensive part `n_phi` times for nothing; measured on a real
+galaxy that cost 41 s of Jeans time versus 0.21 s using the stored m=0.
+
+Check `n_phi` convergence against 2x. Azimuthal averaging annihilates every harmonic except
+multiples of `n_phi`; an MGE carries only m = 0, 2 (so n_phi = 4 is exact), but a cusped analytic bar
+has real power at m >= 8 and needs 16.
+
+**Passing parameters.** Define the callables **inside** the jitted likelihood so they close over the
+traced parameters of the current sample. They are static arguments, so a helper that rebuilds them
+per sample retraces every sample. `params_disk_rho` then carries only what `build_model_acc` itself
+reads — `mass_to_light_ratio`, `Omega_bar`, `alpha`, `beta`, `gamma`. Nothing model-specific needs to
+travel through `params_baryon`, and there is no `if` at trace or run time, so logL still jits/vmaps.
+
+Worked example: `likelihood.make_mge_logL`. Validated by
+`example/test_acceptance_ngc4371.py`, which reproduces the published NGC 4371 best fit to 3.5%.
+
+`get_model_with_orbit_acc` and `model_deltaChi2_jackknife_acc` are the matching variants of 6.4/6.5.
+
+---
+
+### 6.3b `model.build_model` — v1 forward model (analytic disc + bar only)
 ```python
 def build_model(density_func, potential_func,
                 params_halo_pot, params_disk_rho, dict_data, num_Vbin,

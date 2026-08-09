@@ -57,8 +57,10 @@ The package modules live at the repository root. Put the repo root on your
 
 | File | Purpose |
 |------|---------|
-| `model.py` | **Main entry points**: `build_model`, `get_model_with_orbit`, `model_deltaChi2_jackknife` |
-| `likelihood.py` | `model_likelihood` (MCMC log-likelihood), `calculate_delta_chi2` |
+| `model.py` | **Main entry points.** v2 (recommended): `build_model_acc`, `get_model_with_orbit_acc`, `model_deltaChi2_jackknife_acc`. v1 (analytic disc+bar only): `build_model`, `get_model_with_orbit`, `model_deltaChi2_jackknife` |
+| `likelihood.py` | `make_mge_logL` (v2 worked example), `model_likelihood` (v1 MCMC log-likelihood), `calculate_delta_chi2` |
+| `mge_model.py` | MGE density and the exact 1-D-quadrature MGE potential builder (`get_phi_m_exact`) |
+| `deprojection.py` | MGE deprojection for a barred galaxy: triaxial bar axis ratios, inclination floor |
 | `utils.py` | Data loader (`load_data_bootstrap`), parameter converters, rotation curves, rotation matrices |
 | `potentials.py` | NFW halo + Miyamoto–Nagai disc potential/density |
 | `dehnen_bar.py` | Dehnen & Aly (2023) T3/T4/V4 bar + bulge potential/density pairs |
@@ -68,7 +70,7 @@ The package modules live at the repository root. Put the repo root on your
 | `ghmoments.py` | Gauss–Hermite basis and `h → (V, σ)` conversion |
 | `CylindricalSpline.py`, `CubicSpline.py` | Cylindrical-spline potential expansion for non-analytic densities |
 | `constants.py` | Physical constants and lookup tables |
-| `example/` | End-to-end notebooks, example data, and a finished MCMC checkpoint |
+| `example/` | End-to-end notebooks, example data, a finished MCMC checkpoint, and the NGC 4371 acceptance test |
 | `docs/LLM_GUIDE.md` | In-depth developer/agent guide (function signatures, workflows, pitfalls) |
 
 ---
@@ -130,7 +132,29 @@ A four-part tutorial that works from the shipped `mcmc_checkpoint.pkl`:
 This notebook runs locally out of the box (it adds the repo root to `sys.path`
 automatically).
 
-### 3. Go deeper — [`docs/LLM_GUIDE.md`](docs/LLM_GUIDE.md)
+### 3. Model a real galaxy from an external potential — v2
+
+`build_model_acc` is the recommended entry point. It takes four callables and never
+branches on what kind of potential it holds, so the same code serves an MGE, a
+CylindricalSpline, an analytic profile, or any sum of these:
+
+```python
+from model import build_model_acc
+res = build_model_acc(density_func, potential_func, acceleration_func, potential_func_axi,
+                      params_halo_pot, params_disk_rho, dict_data, num_Vbin, ...)
+```
+
+* `acceleration_func` is **required, with no fallback** — splines and MGEs supply their own
+  analytic gradient, and the orbit integrator calls it ~1e9 times per model evaluation.
+* `potential_func_axi` is the **m=0 (azimuthally averaged)** potential, used only by the Jeans
+  velocity seeding, which assumes Φ = Φ(R, z). The integrator still receives the FULL barred
+  potential.
+
+`likelihood.make_mge_logL` is a complete worked example, and
+[`example/test_acceptance_ngc4371.py`](example/test_acceptance_ngc4371.py) reproduces the
+published NGC 4371 best fit with it to 3.5% on every channel.
+
+### 4. Go deeper — [`docs/LLM_GUIDE.md`](docs/LLM_GUIDE.md)
 
 A detailed reference covering every public function signature, the `dict_data`
 schema, how to build your own forward model from the low-level pieces (custom

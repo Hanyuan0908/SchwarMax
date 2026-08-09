@@ -12,10 +12,10 @@ generated from the package's analytic disc + bar.
 | `jeans.py` | `get_jeans_moments_improved` / `get_w0_new_improved`: Jeans solver taking `density_func` and `potential_func` as plain callables. Gauss-Legendre quadrature and autodiff derivatives. |
 | `deprojection.py` | MGE deprojection with a triaxial bar; `solve_bar_pq`, `deproject_components`, `inclination_floor`. |
 | `mge_model.py` | MGE density and the exact CylindricalSpline potential builder. |
-| `utils.py` | `axisymmetrize_potential`, `tabulate_axisymmetric_potential`. |
+| `utils.py` | `axisymmetrize_potential`. |
 | `ghmoments.py` | `h_to_V_sigma_GH` -- the Gauss-Hermite reference-Gaussian conversion (pPXF's `v0`/`s`). |
 | `potentials.py` | analytic `NFW_acceleration`. |
-| `example_disc_bar_halo.py` | worked example: NFW halo + CylSpline axisymmetric disc + analytic triaxial bar. |
+| `likelihood.py` | `make_mge_logL` -- worked v2 example, validated by `example/test_acceptance_ngc4371.py`. |
 
 ## Design
 
@@ -47,7 +47,7 @@ Three strategies, all with the same signature; pick on cost and accuracy, not on
 |---|---|---|
 | the object's own m=0 (`evaluate_phi_axisymmetric`) | free | exact |
 | `axisymmetrize_potential(pot, n_phi)` | n_phi x per-call | exact only if band-limited below n_phi |
-| `tabulate_axisymmetric_potential(pot, ...)` | decoupled from source | interpolation error |
+| expand once: `get_phi_m(rho, ..., Mmax=0)` then `evaluate_phi_axisymmetric` | one build, then a lookup | spline error, no aliasing |
 
 Prefer the stored m=0 when the potential has one. Since Phi is additive, axisymmetrise only the
 components that need it -- an axisymmetric disc and a spherical halo are already their own m=0, so a
@@ -65,3 +65,21 @@ m >= 8.
   `h_to_V_sigma_GH` when converting back to V and sigma for reporting.
 * float64 is fine on CPU. Do not enable it for GPU runs -- it is both much slower and much more
   memory-hungry there.
+
+
+## Validation
+
+`example/test_acceptance_ngc4371.py` reproduces the published NGC 4371 best fit through
+`build_model_acc` to within 3.5% on every channel:
+
+```
+channel      new    published    ratio
+logSig     0.0724     0.0700     1.035
+h1         0.9168     0.9100     1.007
+h2         0.6168     0.6200     0.995
+h3         1.1985     1.1900     1.007
+h4         0.8229     0.8000     1.029
+581 bins, 10 000 orbits, 181 s, float64 CPU
+```
+
+Run `example/prepare_ngc4371_acceptance.py` first to cache the binned data and potential.

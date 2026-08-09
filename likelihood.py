@@ -334,3 +334,111 @@ def calculate_delta_chi2(params, dict_data, num_Vbin, Rzphi_n_tot):
                     nnls_maxiter=200, regularization=1.0,
                     n_groups = num_Vbin, batch_size = 25)
     return delta_chi2
+
+# =============================================================================
+# EXAMPLE: log-likelihood for an externally supplied potential (v2 path)
+#
+# `model_likelihood` above is the v1 entry point: it uses `build_model`, whose
+# baryons are the package's own analytic disc + bar, and it differentiates the
+# potential to get accelerations.
+#
+# `make_mge_logL` below is the RECOMMENDED v2 pattern. It uses
+# `build_model_acc`, which takes FOUR callables and never branches on what kind
+# of potential it holds, so the same code serves an MGE, a CylindricalSpline, an
+# analytic profile, or any sum of these.
+#
+# This example is the one exercised by `example/test_acceptance_ngc4371.py`,
+# which reproduces the published NGC 4371 best fit to 3.5% on every channel.
+# =============================================================================
+
+
+def make_mge_logL(dict_data, num_Vbin, mge, halo_fixed, grids):
+    """Build a jitted log-likelihood for an MGE-defined baryonic potential.
+
+    Parameters
+    ----------
+    mge : dict with 'M', 'S', 'P', 'Q' -- intrinsic Gaussian masses, sigma_x, and
+        the axis ratios sigma_y/sigma_x, sigma_z/sigma_x.
+    halo_fixed : dict with 'Rs' (kpc) -- the NFW scale radius, held fixed here.
+    grids : the Rzphi_* / xy_* keyword arguments for `build_model_acc`.
+
+    theta = [log10 M_halo, log10 (M/L), log10 Omega_bar, inclination_deg,
+             bar_azimuth_deg, v_sys]
+
+    WHY THE CALLABLES ARE DEFINED INSIDE THE JITTED FUNCTION
+    They are static arguments of `build_model_acc`. A helper that rebuilds them
+    per sample forces a retrace every sample; defined inside a jitted likelihood
+    they are traced once. They then close over the traced parameters of the
+    current sample, so nothing model-specific has to travel through
+    `params_baryon` -- `params_disk_rho` carries only what `build_model_acc`
+    itself reads.
+    """
+    import mge_model as MM
+    from model import build_model_acc
+    from CylindricalSpline import evaluate_phi, evaluate_phi_axisymmetric, get_acc
+    from potentials import NFW_acceleration
+    from deprojection import deproject_components
+
+    M0, S = jnp.asarray(mge['M']), jnp.asarray(mge['S'])
+    P0, Q0 = jnp.asarray(mge['P']), jnp.asarray(mge['Q'])
+
+    @jax.jit
+    def logL(theta):
+        logMh, logML, logOm, inc_deg, bar_deg, v_sys = theta
+
+        # M/L must go into the POTENTIAL, not only into the data rescaling:
+        # the Gaussians carry mass = light * (M/L).
+        mass = M0 * 10 ** logML
+
+        # Exact 1-D-quadrature MGE potential on a harmonic (R, z, m) grid.
+        # Same dict format as CylindricalSpline, so evaluate_phi / get_acc work
+        # unchanged -- and it already stores the m=0 harmonic, which is what
+        # makes `potaxi` below free.
+        dphi = MM.get_phi_m_exact(mass, S, P0, Q0,
+                                  50, 30, 1e-3, 50.0, 1e-3, 20.0, 6, 32)
+
+        p_halo = {'logM': logMh, 'Rs': halo_fixed['Rs'],
+                  'a': 1.0, 'b': 1.0, 'c': 1.0,
+                  'x_origin': 0.0, 'y_origin': 0.0, 'z_origin': 0.0,
+                  'dirx': 0.0, 'diry': 0.0, 'dirz': 1.0}
+
+        # --- the four callables -------------------------------------------
+        def dens(x, y, z, params_baryon):
+            # Analytic MGE density. NEVER reconstruct it from the Laplacian of
+            # the potential -- that is numerically unstable and can go negative.
+            return MM.mge_density(x, y, z, mass, S, P0, Q0)
+
+        def pot(x, y, z, pb, ph):                    # FULL potential: bar present
+            return evaluate_phi(x, y, z, dphi) + NFW_potential(x, y, z, ph)
+
+        def accf(x, y, z, pb, ph):
+            # The spline's own analytic gradient. The integrator calls this
+            # ~1e9 times per model evaluation, so differentiating `pot` here is
+            # not an option -- that is why acceleration_func is required.
+            return get_acc(x, y, z, dphi) + NFW_acceleration(x, y, z, ph)
+
+        def potaxi(x, y, z, pb, ph):
+            # m=0 ONLY. The Jeans velocity seeding assumes Phi = Phi(R, z);
+            # feeding it the barred potential samples the bar's long axis and
+            # biases the circular speed. The integrator above still gets the
+            # full potential. Free here because the MGE spline stores its m=0.
+            return evaluate_phi_axisymmetric(x, y, z, dphi) + NFW_potential(x, y, z, ph)
+
+        # Only what build_model_acc itself reads; everything else is closed over.
+        p_disk = {'mass_to_light_ratio': 10 ** logML,
+                  'Omega_bar': 10 ** logOm,
+                  'alpha': 0.0,            # on-sky position angle
+                  'beta': inc_deg,         # inclination
+                  'gamma': bar_deg}        # bar azimuth
+
+        res = build_model_acc(dens, pot, accf, potaxi, p_halo, p_disk,
+                              dict_data, num_Vbin,
+                              sigma_frac_3d=0.05, v_sys=v_sys, **grids)
+
+        chi2 = 0.0
+        for name in ('h1', 'h2', 'h3', 'h4'):
+            resid = res[name] - dict_data[name + '_data']
+            chi2 = chi2 + jnp.sum((resid / (dict_data[name + '_data_err'] + EPSILON)) ** 2)
+        return -0.5 * chi2
+
+    return logL
