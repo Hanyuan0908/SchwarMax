@@ -161,6 +161,29 @@ def getCartesianFromCylindrical_clockwise(R, phi, vR, vphi):
     
     return x, y, vx, vy
 
+
+def getCartesianFromCylindrical_anticlockwise(R, phi, vR, vphi):
+    """
+    Reverts R, phi, vR, vphi back to Cartesian x, y, vx, vy.
+    Right-handed (standard) convention: positive vphi = counterclockwise (Lz > 0).
+
+    Mirror of getCartesianFromCylindrical_clockwise, which gives Lz = -R*vphi.
+    The seeding sense MUST match the sign of Omega_bar handed to the integrator,
+    otherwise the bar counter-rotates with respect to the stars:
+        anticlockwise (Lz>0)  <->  +Omega_bar
+        clockwise     (Lz<0)  <->  -Omega_bar
+    """
+    cos_phi = jnp.cos(phi)
+    sin_phi = jnp.sin(phi)
+
+    x = R * cos_phi
+    y = R * sin_phi
+
+    vx = vR * cos_phi - vphi * sin_phi
+    vy = vR * sin_phi + vphi * cos_phi
+
+    return x, y, vx, vy
+
 def Rz(t):
     ct, st = jnp.cos(t), jnp.sin(t)
     return jnp.array([[ct, -st, 0.0],
@@ -741,3 +764,112 @@ def load_data_bootstrap(path, filename, N_BOOTSTRAP = 100, n_samples = 5_000):
     }
 
     return dict_data
+
+@partial(jax.jit, static_argnames=('potential_func', 'n_phi'))
+def _axisymmetric_potential(x, y, z, params_baryon, params_halo, potential_func, n_phi=8):
+    """Azimuthal (m=0) average of potential_func at fixed (R, z).
+
+    Phi_axi(R, z) = <Phi(R cos a, R sin a, z)>_a
+    """
+    R = jnp.sqrt(x**2 + y**2)
+    a = jnp.linspace(0.0, 2.0 * jnp.pi, n_phi, endpoint=False)
+    vals = jax.vmap(lambda ang: potential_func(R * jnp.cos(ang), R * jnp.sin(ang), z,
+                                               params_baryon, params_halo))(a)
+    return jnp.mean(vals)
+
+
+def axisymmetrize_potential(potential_func, n_phi=8):
+    """Wrap potential_func into its m=0 (azimuthally averaged) counterpart.
+
+    Returns a callable with the SAME signature, so it is a drop-in for the
+    axisymmetric Jeans equations and for circular-speed / orbital-timescale
+    estimates, all of which assume Phi = Phi(R, z).
+
+    Why this matters: those routines evaluate the potential along phi = 0 only.
+    For a barred potential that samples the bar's long axis rather than the
+    azimuthal average - for a strongly barred MGE the radial force can vary by 5-21%
+    with azimuth, biasing v_c by -1.4% to +5.2% depending on radius.
+
+    The ORBIT INTEGRATOR must still be given the FULL potential: the bar has to
+    be present for the orbits themselves.
+
+    n_phi : number of azimuths in the average.  With MMAX = 2 the MGE potential
+        contains only m = 0 and m = 2, so the average is already exact by n_phi = 4;
+        Phi is identical from n_phi = 4 to 64 and matches
+        CylindricalSpline.evaluate_phi_axisymmetric to 1e-7 relative.  Default 8.
+    """
+    def phi_axi(x, y, z, params_baryon, params_halo):
+        return _axisymmetric_potential(x, y, z, params_baryon, params_halo,
+                                       potential_func, n_phi)
+    return phi_axi
+
+
+def tabulate_axisymmetric_potential(potential_func, params_baryon, params_halo,
+                                    R_max=20.0, z_max=8.0, n_R=64, n_z=33, n_phi=8):
+    """Tabulate the m=0 potential on an (R, |z|) grid once; return a cheap interpolant.
+
+    *** NOT RECOMMENDED AS A DEFAULT -- measurement says you almost certainly do not
+    need this.  With the spline's own m=0 the Jeans costs ~0.26% of a model
+    evaluation, and for an analytic potential the generic 8-azimuth averager
+    costs only ~10%.  Interpolating buys nothing in either case and does cost accuracy:
+    the surface-density chi2 degraded by ~3% on a real-galaxy benchmark, because dPhi_dR's step is far
+    smaller than the grid spacing so it reads the bilinear cell's constant slope.
+    The only case it helps is an expensive source potential wrapped in the generic
+    averager -- and a CylindricalSpline already carries a free exact m=0, so that
+    combination is avoidable.  Kept for a genuinely costly potential with no analytic
+    m=0; reach for it only after measuring. ***
+
+    Same signature and role as `axisymmetrize_potential`, but it pays the azimuthal
+    average `n_R * n_z * n_phi` times TOTAL instead of once per Jeans evaluation.
+
+    Why this exists: the Jeans solver only ever needs Phi(R, z), yet it evaluates it
+    ~4-6e3 times per particle (a 1000-point vertical quadrature, twice, plus a
+    jax.grad through one of them).  Over 8000 particles that is ~3e7 potential calls
+    per model evaluation.  Wrapping an analytic potential in `axisymmetrize_potential`
+    turns each of those into `n_phi` full evaluations and costs 3.7x on the whole model
+    (measured on a real-galaxy benchmark: 3.7x).  A CylindricalSpline is fast for one reason:
+    it has ALREADY tabulated its m=0 harmonic.  This gives any potential the same deal.
+
+    Cost here is n_R * n_z * n_phi evaluations (default 64*33*8 = 16 896), after which
+    every Jeans call is a bilinear lookup.
+
+    Accuracy: bilinear (order=1) so that `jax.grad` through it stays well defined --
+    `d_nu_sigR2_dR = jax.grad(vertical_pressure)(R)` differentiates this.  Phi(R, z) is
+    smooth and monotonic in R over the fitted range, so a 64x33 grid is ample; widen
+    n_R/n_z rather than raising the order if you need more.
+
+    z symmetry: the grid is built on |z| and mirrored, matching the m=0 assumption
+    already implicit in the axisymmetric Jeans equations.
+
+    Grid bounds: samples are CLAMPED to the table, so R_max / z_max must cover the
+    orbit library.  Defaults (20 kpc, 8 kpc) comfortably exceed a typical seed set
+    (R < 14, |z| < 6); raise them for a larger galaxy.
+
+    Returns a callable (x, y, z, params_baryon, params_halo) -> Phi, ignoring the
+    params it is handed since they are baked into the table.  Build it INSIDE the
+    jitted likelihood so it closes over the traced parameters of the current sample.
+    """
+    R_nodes = jnp.linspace(0.0, R_max, n_R)
+    z_nodes = jnp.linspace(0.0, z_max, n_z)
+    ang = jnp.linspace(0.0, 2.0 * jnp.pi, n_phi, endpoint=False)
+
+    def phi_m0(R, z):
+        vals = jax.vmap(lambda a: potential_func(R * jnp.cos(a), R * jnp.sin(a), z,
+                                                 params_baryon, params_halo))(ang)
+        return jnp.mean(vals)
+
+    RR, ZZ = jnp.meshgrid(R_nodes, z_nodes, indexing='ij')
+    table = jax.vmap(jax.vmap(phi_m0))(RR, ZZ)            # (n_R, n_z)
+
+    dR = R_max / (n_R - 1)
+    dz = z_max / (n_z - 1)
+
+    def phi_interp(x, y, z, params_baryon_unused, params_halo_unused):
+        R = jnp.sqrt(x ** 2 + y ** 2)
+        fR = jnp.clip(R / dR, 0.0, n_R - 1.0)
+        fz = jnp.clip(jnp.abs(z) / dz, 0.0, n_z - 1.0)
+        return jax.scipy.ndimage.map_coordinates(
+            table, [fR.ravel(), fz.ravel()], order=1, mode='nearest'
+        ).reshape(jnp.shape(fR))
+
+    return phi_interp

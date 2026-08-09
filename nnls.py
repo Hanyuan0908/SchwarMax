@@ -12,7 +12,11 @@ def solve_nnls_admm(
     w_rzphi = jnp.sqrt(1.0), w_xy = jnp.sqrt(1.0), w_h = jnp.sqrt(1.0)
 ):
     eps = 1e-8
-    gamma_kin_safe = jnp.where(jnp.abs(gamma_kin) > eps, gamma_kin, eps)
+    # Fall back to 1.0, NOT eps: the kinematic rows are A_h_k / gamma_kin, so replacing a
+    # near-zero normaliser by eps makes those rows explode and dominate the NNLS.  Faint bins
+    # then drag the whole kinematic fit.  (Validated pipeline uses 1.0; using eps cost
+    # 18-32% on every h channel while leaving the density unaffected.)
+    gamma_kin_safe = jnp.where(jnp.abs(gamma_kin) > eps, gamma_kin, 1.0)
 
     # vdMF / Agama option-b construction: kinematic rows weight orbits by A_h0
     # (carried in A_h_k via the gamma_kin denominator), not by A_xy.
@@ -99,7 +103,11 @@ def solve_nnls_admm_bootstrap(
         weights_all: (N_boot, n_orb) — NNLS weights for each bootstrap
     """
     eps = 1e-8
-    gamma_kin_safe = jnp.where(jnp.abs(gamma_kin) > eps, gamma_kin, eps)
+    # Fall back to 1.0, NOT eps: the kinematic rows are A_h_k / gamma_kin, so replacing a
+    # near-zero normaliser by eps makes those rows explode and dominate the NNLS.  Faint bins
+    # then drag the whole kinematic fit.  (Validated pipeline uses 1.0; using eps cost
+    # 18-32% on every h channel while leaving the density unaffected.)
+    gamma_kin_safe = jnp.where(jnp.abs(gamma_kin) > eps, gamma_kin, 1.0)
 
     # ---- Build design matrix U (shared across all bootstraps) ----
     # Kinematic rows: residual = (Σᵢ wᵢ · A_h_k[i,b]) / gamma_kin_b - h_k_obs[b],

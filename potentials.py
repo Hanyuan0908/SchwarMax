@@ -27,6 +27,29 @@ def NFW_potential(x, y, z, params):
     return -G * 10**params['logM'] * jnp.log(1 + r / params['Rs']) / (r + EPSILON)  # kpc^2 / Gyr^2
 
 @jax.jit
+def NFW_acceleration(x, y, z, params):
+    """Analytic NFW acceleration, a = -G M_enc(r) / r^2 * r_hat.
+
+    Same parameter dict as NFW_potential.  Analytic rather than autodiff so it can be
+    handed to build_model_acc as `acceleration_func` without differentiating through
+    the potential at every force evaluation.
+
+    Returns a (3,) array (or (3, n) for array inputs), matching the shape contract of
+    CylindricalSpline.get_acc and of -grad(potential).
+    """
+    rin = _shift(x, y, z, params)
+    rrot = _rotate(rin, params)
+    a, b, c = params['a'], params['b'], params['c']
+    xr, yr, zr = rrot[0] / a, rrot[1] / b, rrot[2] / c
+    r = jnp.sqrt(xr**2 + yr**2 + zr**2) + EPSILON
+    Rs = params['Rs']
+    u = r / Rs
+    M_enc = 10**params['logM'] * (jnp.log1p(u) - u / (1.0 + u))
+    a_r = -G * M_enc / (r**2 + EPSILON)          # inward
+    return jnp.stack([a_r * xr / r, a_r * yr / r, a_r * zr / r])
+
+
+@jax.jit
 def MiyamotoNagai_density(x, y, z, params):
     '''
     params: dict with keys 'logM', 'Rs', 'Hs', 'x_origin', 'y_origin', 'z_origin', 'dirx', 'diry', 'dirz'
