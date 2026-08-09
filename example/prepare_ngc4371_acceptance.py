@@ -9,8 +9,12 @@ The two code trees cannot share a process (both define model.py / integrants.py)
 which is why this is a separate prep step rather than part of the test.
 """
 import sys,os,pickle,numpy as np,warnings; warnings.filterwarnings('ignore')
-P=os.environ.get('MILESTONE_DIR',
-    '/Users/hanyuan/Library/CloudStorage/Dropbox/python_script/PHANGS_SchwarMAX/ngc4371_pipeline/NGC4371_bestfit_milestone_2026-07-22')
+P=os.environ.get('MILESTONE_DIR')
+if not P or not os.path.isdir(P):
+    raise SystemExit(
+        "Set MILESTONE_DIR to your copy of the NGC 4371 best-fit milestone snapshot\n"
+        "(the directory containing run_bestfit.py, data/ and schwarmax_code/).\n"
+        "The snapshot is not redistributed with this package.")
 sys.path.insert(0,os.path.join(P,'schwarmax_code'))
 import jax, jax.numpy as jnp; jax.config.update('jax_platform_name','cpu'); jax.config.update('jax_enable_x64',True)
 from scipy.cluster.vq import kmeans2
