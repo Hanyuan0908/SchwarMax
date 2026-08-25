@@ -431,7 +431,11 @@ def make_mge_logL(dict_data, num_Vbin, mge, halo_fixed, grids):
                   'beta': inc_deg,         # inclination
                   'gamma': bar_deg}        # bar azimuth
 
-        res = build_model_acc(dens, pot, accf, potaxi, p_halo, p_disk,
+        # An MGE with a triaxial bar is NOT axisymmetric, so strictly density_func_axi
+        # should be its m=0 component.  Passing density_func reproduces the behaviour
+        # from before density_func_axi existed; for a genuinely axisymmetric MGE the
+        # two coincide exactly.
+        res = build_model_acc(dens, pot, accf, potaxi, dens, p_halo, p_disk,
                               dict_data, num_Vbin,
                               sigma_frac_3d=0.05, v_sys=v_sys, **grids)
 

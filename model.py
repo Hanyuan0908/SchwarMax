@@ -912,8 +912,9 @@ def get_model_with_orbit(density_func, potential_func,
 # The original build_model() is deliberately left unchanged.
 # ==========================================================================
 
-@partial(jax.jit, static_argnames=('density_func', 'potential_func', 'acceleration_func', 'potential_func_axi', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter'))
+@partial(jax.jit, static_argnames=('density_func', 'potential_func', 'acceleration_func', 'potential_func_axi', 'density_func_axi', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter'))
 def build_model_acc(density_func, potential_func, acceleration_func, potential_func_axi,
+                    density_func_axi,
                 params_halo_pot, params_disk_rho, dict_data, num_Vbin,
                 jeans_z_int_max=5.0, sigma_frac_3d=0.02, v_sys=0.0,
                 Rzphi_n_tot=360, Rzphi_n_grid = jnp.array([10,6,6]), Rzphi_lim_grid = jnp.array([[0,10.],[-3,3],[-jnp.pi, jnp.pi]]),
@@ -931,6 +932,14 @@ def build_model_acc(density_func, potential_func, acceleration_func, potential_f
         integrator does `ax, ay, az = acc_fn(x, y, z)` (integrates.py).  Both a
         (3,) array -- as returned by CylindricalSpline.get_acc and by the autodiff
         path (-grad_phi) -- and a 3-tuple work; batched inputs give (3, n).
+
+    density_func_axi(x, y, z, params_baryon) -> rho_m0
+        The m = 0 (azimuthally averaged) density, used ONLY by the Jeans velocity
+        seeding, which solves the AXISYMMETRIC Jeans equations.  It is the density
+        counterpart of potential_func_axi.  For an MGE or any axisymmetric model this
+        is just density_func.  For a barred parametric density it must be the m = 0
+        component: the Jeans differentiates through it, and handing it the full barred
+        density is both inconsistent and the dominant memory cost of the model.
 
     build_model() is left unchanged for book-keeping / regression comparison.
     """
@@ -979,8 +988,14 @@ def build_model_acc(density_func, potential_func, acceleration_func, potential_f
     key1, key2, key3 = jax.random.PRNGKey(42), jax.random.PRNGKey(109), jax.random.PRNGKey(2026)
     # Clockwise seeding (Lz<0) paired with -Omega_bar below: the bar co-rotates with
     # the stars.  An apparent rotation of either sign on the sky comes from alpha.
+    # The Jeans equations are AXISYMMETRIC, so they get the m=0 density and the m=0
+    # potential -- not the full barred ones.  Passing the barred density here is both
+    # physically inconsistent and expensive: jax.grad(vertical_pressure) differentiates
+    # through it, which for a Dehnen bar dominates the model's memory (measured: the
+    # Jeans fell from 0.580 to 0.296 GB when density_func_axi was cheap).  With an MGE
+    # the two coincide and this costs nothing.
     w0_new = get_w0_new_improved(w0, key1, key2, key3, n_particles,
-                                 params_baryon, params_halo_pot, potential_func_axi, density_func,
+                                 params_baryon, params_halo_pot, potential_func_axi, density_func_axi,
                                  z_int_max=jeans_z_int_max)
 
     #======================================== Calculate orbital timescale =====================================================
@@ -1166,8 +1181,9 @@ def build_model_acc(density_func, potential_func, acceleration_func, potential_f
 # The original model_deltaChi2_jackknife() is deliberately left unchanged.
 # ==========================================================================
 
-@partial(jax.jit, static_argnames=('density_func', 'potential_func', 'acceleration_func', 'potential_func_axi', 'chi2_func', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter', 'jeans_z_int_max', 'n_groups', 'batch_size'))
-def model_deltaChi2_jackknife_acc(density_func, potential_func, acceleration_func, potential_func_axi, chi2_func,
+@partial(jax.jit, static_argnames=('density_func', 'potential_func', 'acceleration_func', 'potential_func_axi', 'density_func_axi', 'chi2_func', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter', 'jeans_z_int_max', 'n_groups', 'batch_size'))
+def model_deltaChi2_jackknife_acc(density_func, potential_func, acceleration_func, potential_func_axi,
+                                  density_func_axi, chi2_func,
                 params_halo_pot, params_disk_rho, dict_data, num_Vbin,
                 jeans_z_int_max=5.0,
                 Rzphi_n_tot=360, Rzphi_n_grid = jnp.array([10,6,6]), Rzphi_lim_grid = jnp.array([[0,10.],[-3,3],[-jnp.pi, jnp.pi]]),
@@ -1250,8 +1266,14 @@ def model_deltaChi2_jackknife_acc(density_func, potential_func, acceleration_fun
     key1, key2, key3 = jax.random.PRNGKey(42), jax.random.PRNGKey(109), jax.random.PRNGKey(2026)
     # Improved Jeans seeder: the m=0 average required by the axisymmetric Jeans equations
     # is taken inside get_w0_new_improved, so the FULL potential is passed here.
+    # The Jeans equations are AXISYMMETRIC, so they get the m=0 density and the m=0
+    # potential -- not the full barred ones.  Passing the barred density here is both
+    # physically inconsistent and expensive: jax.grad(vertical_pressure) differentiates
+    # through it, which for a Dehnen bar dominates the model's memory (measured: the
+    # Jeans fell from 0.580 to 0.296 GB when density_func_axi was cheap).  With an MGE
+    # the two coincide and this costs nothing.
     w0_new = get_w0_new_improved(w0, key1, key2, key3, n_particles,
-                                 params_baryon, params_halo_pot, potential_func_axi, density_func,
+                                 params_baryon, params_halo_pot, potential_func_axi, density_func_axi,
                                  z_int_max=jeans_z_int_max)
 
     #======================================== Calculate orbital timescale =====================================================
@@ -1509,8 +1531,9 @@ def model_deltaChi2_jackknife_acc(density_func, potential_func, acceleration_fun
 # The original get_model_with_orbit() is deliberately left unchanged.
 # ==========================================================================
 
-@partial(jax.jit, static_argnames=('density_func', 'potential_func', 'acceleration_func', 'potential_func_axi', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter', 'jeans_z_int_max'))
+@partial(jax.jit, static_argnames=('density_func', 'potential_func', 'acceleration_func', 'potential_func_axi', 'density_func_axi', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter', 'jeans_z_int_max'))
 def get_model_with_orbit_acc(density_func, potential_func, acceleration_func, potential_func_axi,
+                             density_func_axi,
                         params_halo_pot, params_disk_rho, dict_data, num_Vbin,
                 jeans_z_int_max=5.0,
                         Rzphi_n_tot=360, Rzphi_n_grid = jnp.array([10,6,6]), Rzphi_lim_grid = jnp.array([[0,10.],[-3,3],[-jnp.pi, jnp.pi]]),
@@ -1605,8 +1628,14 @@ def get_model_with_orbit_acc(density_func, potential_func, acceleration_func, po
     key1, key2, key3 = jax.random.PRNGKey(42), jax.random.PRNGKey(109), jax.random.PRNGKey(2026)
     # Improved Jeans seeder: the m=0 average required by the axisymmetric Jeans equations
     # is taken inside get_w0_new_improved, so the FULL potential is passed here.
+    # The Jeans equations are AXISYMMETRIC, so they get the m=0 density and the m=0
+    # potential -- not the full barred ones.  Passing the barred density here is both
+    # physically inconsistent and expensive: jax.grad(vertical_pressure) differentiates
+    # through it, which for a Dehnen bar dominates the model's memory (measured: the
+    # Jeans fell from 0.580 to 0.296 GB when density_func_axi was cheap).  With an MGE
+    # the two coincide and this costs nothing.
     w0_new = get_w0_new_improved(w0, key1, key2, key3, n_particles,
-                                 params_baryon, params_halo_pot, potential_func_axi, density_func,
+                                 params_baryon, params_halo_pot, potential_func_axi, density_func_axi,
                                  z_int_max=jeans_z_int_max)
 
     #======================================== Calculate orbital timescale =====================================================

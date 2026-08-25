@@ -119,8 +119,10 @@ def main():
               'gamma': float(dd['gamma'])}
 
     t0 = time.time()
+    # density_func_axi = dens here, reproducing the behaviour from before that argument
+    # existed, so this regression test still measures the same thing.
     res = build_model_acc(
-        dens, pot, accf, potaxi, p_halo, p_disk, dd, int(dd['total_bins']),
+        dens, pot, accf, potaxi, dens, p_halo, p_disk, dd, int(dd['total_bins']),
         sigma_frac_3d=0.05, v_sys=0.0,   # milestone: relax_3d=2.5 -> 0.02*2.5
         Rzphi_n_tot=int(dd['Rzphi_n_tot']),
         Rzphi_n_grid=jnp.asarray(dd['Rzphi_n_grid']),
