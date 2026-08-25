@@ -83,3 +83,39 @@ h4         0.8229     0.8000     1.029
 ```
 
 Run `example/prepare_ngc4371_acceptance.py` first to cache the binned data and potential.
+
+## `density_func_axi` — the m=0 density for the Jeans
+
+`build_model_acc` and its two siblings take **`density_func_axi`** alongside
+`potential_func_axi`. The Jeans equations are axisymmetric, so they are given the m=0
+density and the m=0 potential; `density_func` keeps the full (possibly barred) density for
+the 3-D density target.
+
+For an MGE or any axisymmetric model the two coincide — pass `density_func` twice.
+
+Why it matters for a barred parametric density: `jax.grad(vertical_pressure)` differentiates
+through the density, so handing the Jeans the barred version is both physically inconsistent
+and the dominant memory cost of the model. Measured on a Dehnen T3 bar at 1000 orbits:
+
+```
+full barred density passed to the Jeans   0.906 GB   (pre-merge baseline 0.640 GB)
+density_func_axi, bar m=0 tabulated       0.481 GB
+```
+
+Two traps, both measured, both to be avoided:
+
+* **Do not azimuthally average inside the Jeans.** A `vmap` over n_phi inside
+  `jax.grad(vertical_pressure)` multiplies the reverse-mode tape: 0.91 -> 5.87 GB.
+  Tabulate the m=0 component once on an (R,|z|) grid and interpolate.
+* **Do not fold a compact bulge into a wide m=0 spline.** An NR=30/NZ=20 grid spanning
+  1e-3..50 kpc cannot resolve a 0.3 kpc bulge; doing so drove logSig chi2 from 13.3 to 140.8.
+
+### Stability, NGC 4371 acceptance test, same session
+
+```
+                  time     logSig    h1      h2      h3      h4
+main              188 s    0.0742  0.9110  0.6196  1.1958  0.8213
+this branch       180 s    0.0742  0.9110  0.6196  1.1958  0.8213
+```
+chi2 bit-identical, 4% faster. Always A/B in ONE session: machine state drifts enough that a
+cross-session comparison is meaningless.
