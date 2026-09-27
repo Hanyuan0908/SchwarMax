@@ -756,7 +756,7 @@ def get_model_with_orbit(density_func, potential_func,
     keys = jax.random.split(key, 6)
     d_scale = 0.1 * jnp.ones(_R.shape)
     v_scale = 0.1 * _Vc
-    v_scale = jnp.clip(v_scale, a_min=1, a_max=15)
+    v_scale = jnp.clip(v_scale, a_min=1, a_max = 15)
     noise_x  = (jax.random.uniform(keys[0], (n_particles, n_realizations,)) - 0.5) * d_scale[:, jnp.newaxis]
     noise_y  = (jax.random.uniform(keys[1], (n_particles, n_realizations,)) - 0.5) * d_scale[:, jnp.newaxis]
     noise_z  = (jax.random.uniform(keys[2], (n_particles, n_realizations,)) - 0.5) * d_scale[:, jnp.newaxis]
@@ -912,16 +912,27 @@ def get_model_with_orbit(density_func, potential_func,
 # The original build_model() is deliberately left unchanged.
 # ==========================================================================
 
-@partial(jax.jit, static_argnames=('density_func', 'potential_func', 'acceleration_func', 'potential_func_axi', 'density_func_axi', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter'))
+# n_realizations is STATIC: it sets array shapes (the jitter arrays and T_orb_batch), so it must
+# be a concrete Python int at trace time, not a traced value.
+@partial(jax.jit, static_argnames=('density_func', 'potential_func', 'acceleration_func', 'potential_func_axi', 'density_func_axi', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter', 'n_realizations', 'return_design', 'anisotropy_b'))
 def build_model_acc(density_func, potential_func, acceleration_func, potential_func_axi,
                     density_func_axi,
                 params_halo_pot, params_disk_rho, dict_data, num_Vbin,
                 jeans_z_int_max=5.0, sigma_frac_3d=0.02, v_sys=0.0,
                 Rzphi_n_tot=360, Rzphi_n_grid = jnp.array([10,6,6]), Rzphi_lim_grid = jnp.array([[0,10.],[-3,3],[-jnp.pi, jnp.pi]]),
                 xy_lim_grid = jnp.array([[-10.,10.],[-3.,3.]]), xy_n_grid = jnp.array([60,40]),
-                nnls_maxiter=200, regularization = 1.0
+                nnls_maxiter=200, regularization = 1.0, n_realizations = 4, return_design = False,
+                anisotropy_b = 1.0
                 ):
     """build_model_acc: variant of build_model() taking an explicit `acceleration_func`.
+
+    n_realizations : int, default 4 (the historical hard-coded value -- callers that do not
+        pass it are unaffected).  Each seed orbit is jittered into this many copies, which are
+        then AVERAGED into ONE library column (integrates.py:288-297).  So the parameter buys
+        smoothing, not extra columns for the NNLS: n_realizations=1 turns the jitter off and
+        makes each library entry a single orbit, integrating 4x faster for the same 7500/10000
+        columns.  Worth testing because averaging orbits can only BROADEN a library entry's
+        LOSVD, never narrow it -- see ngc1512_pipeline/code/diagnose_orbit_library.py.
 
     acceleration_func(x, y, z, params_baryon, params_halo) -> acceleration
         Required.  Same call signature as potential_func.  Used directly instead of
@@ -996,7 +1007,7 @@ def build_model_acc(density_func, potential_func, acceleration_func, potential_f
     # the two coincide and this costs nothing.
     w0_new = get_w0_new_improved(w0, key1, key2, key3, n_particles,
                                  params_baryon, params_halo_pot, potential_func_axi, density_func_axi,
-                                 z_int_max=jeans_z_int_max)
+                                 z_int_max=jeans_z_int_max, anisotropy_b=anisotropy_b)
 
     #======================================== Calculate orbital timescale =====================================================
     _R = jnp.sqrt(w0_new[:,0]**2 + w0_new[:,1]**2)
@@ -1009,7 +1020,8 @@ def build_model_acc(density_func, potential_func, acceleration_func, potential_f
         _z
     )
 
-    n_realizations = 4
+    # n_realizations comes from the signature now (default 4 -> unchanged for every
+    # caller that does not pass it).  It was hard-coded here.
     key = jax.random.PRNGKey(911)
     keys = jax.random.split(key, 6)
     d_scale = 0.1 * jnp.ones(_R.shape)
@@ -1171,6 +1183,20 @@ def build_model_acc(density_func, potential_func, acceleration_func, potential_f
         'sigma': sigma_all,
         'weights': weights_all,
     }
+    if return_design:
+        # The design matrices, for library diagnostics only.  Guarded by a STATIC flag because
+        # A_xy alone is (n_bins x n_orb) = 2324 x 7500 floats, and returning all six from every
+        # likelihood evaluation would add ~350 MB per call to an MCMC that is already
+        # memory-bound.  Default False leaves every existing caller untouched.
+        #   A_h0  : zeroth GH moment  -> the light each orbit puts in each bin
+        #   A_h2  : second GH moment; h2_model = (A_h2 @ w)/gamma_kin, so an orbit whose LOSVD
+        #           is NARROWER than the bin's reference Gaussian (which IS the observed LOSVD,
+        #           because the data have h1=h2=0 by construction) contributes A_h2 < 0.
+        #           "Cold orbit" therefore means A_h2 < 0, exactly and linearly.
+        results_dict.update({'A_xy': A_xy, 'A_h0': A_h0, 'A_h1': A_h1, 'A_h2': A_h2,
+                             'A_h3': A_h3, 'A_h4': A_h4, 'A_Rzphi': A_Rzphi,
+                             'gamma_kin': gamma_kin, 'y_xy': y_xy, 'sig_xy': sig_xy,
+                             'mean_mass_per_orb': mean_mass_per_orb})
     return results_dict
 
 
@@ -1654,7 +1680,7 @@ def get_model_with_orbit_acc(density_func, potential_func, acceleration_func, po
     keys = jax.random.split(key, 6)
     d_scale = 0.1 * jnp.ones(_R.shape)
     v_scale = 0.1 * _Vc
-    v_scale = jnp.clip(v_scale, a_min=1, a_max=15)
+    v_scale = jnp.clip(v_scale, a_min=1, a_max = 15)
     noise_x  = (jax.random.uniform(keys[0], (n_particles, n_realizations,)) - 0.5) * d_scale[:, jnp.newaxis]
     noise_y  = (jax.random.uniform(keys[1], (n_particles, n_realizations,)) - 0.5) * d_scale[:, jnp.newaxis]
     noise_z  = (jax.random.uniform(keys[2], (n_particles, n_realizations,)) - 0.5) * d_scale[:, jnp.newaxis]
@@ -1804,3 +1830,199 @@ def get_model_with_orbit_acc(density_func, potential_func, acceleration_func, po
         'V':                 V_all,
         'sigma':             sigma_all,
     }
+
+
+# ==========================================================================================
+# build_model_acc_meff — build_model_acc PLUS the effective number of free parameters m_eff
+# ==========================================================================================
+# ADDED.  build_model_acc and nnls.py are NOT modified, so every existing result stays
+# reproducible.  This is a WRAPPER, not a fork: it calls build_model_acc(return_design=True)
+# and reuses its design matrices and the EXISTING solve_nnls_admm_bootstrap, so there is no
+# duplicated linear algebra to drift out of sync.
+#
+# WHY.  Judging orbit models by chi2 alone biases the recovered galaxy properties, because
+# models of different flexibility fit different amounts of noise (Lipka & Thomas 2021).  The
+# correction is the generalized AIC of Thomas & Lipka (2022, eq. 15):
+#
+#     AIC_p = chi2 + 2 * m_eff
+#     m_eff = mean_k sum_i [(f_i(Th_z^k) - f_i(Th_y))/eps_i] * [(z_i^k - f_i(Th_y))/eps_i]
+#     z^k   = f(Th_y) + N(0, eps)            <- noise on the FIT, not on the data
+#
+# NOTE the difference from dict_data's own bootstraps, which perturb the DATA and are used to
+# marginalise the likelihood.  Here the noise is added to the model's own fit, and the SAME
+# standard normals are reused so that two different mass models see PAIRED noise realisations
+# (needed if a dAIC threshold is ever calibrated across two models, Wang+2026 sec. 5.3).
+#
+# COST.  solve_nnls_admm_bootstrap is simply called TWICE -- once on the unperturbed data,
+# once on the batch of perturbed sets.  Both calls build the same U and the same Cholesky from
+# identical inputs, so XLA's CSE collapses them; the measured cost is in the ADMM iterations
+# (0.168 s per bootstrap against 45.6 s for a full evaluation on CPU).  Every returned model
+# vector is recomputed from w0, which lets XLA dead-code-eliminate build_model_acc's own
+# internal bootstrap solve -- two live solves, not three.
+#
+# JIT.  `regularization` arrives as a TRACED value and is used only in arithmetic, so ONE
+# compiled kernel serves every lambda and the MCMC never recompiles.  It must NEVER become a
+# static argname.  n_boot_meff IS static: it sets an array shape.  And note jeans_z_int_max
+# below -- forwarding an argument a jitted callee declares static turns a concrete default
+# into a tracer.
+
+
+@partial(jax.jit, static_argnames=(
+    'density_func', 'potential_func', 'acceleration_func', 'potential_func_axi',
+    'density_func_axi', 'num_Vbin', 'Rzphi_n_tot', 'nnls_maxiter', 'n_realizations',
+    'anisotropy_b', 'n_boot_meff', 'jeans_z_int_max', 'err_den_meff'))
+def build_model_acc_meff(density_func, potential_func, acceleration_func, potential_func_axi,
+                         density_func_axi,
+                         params_halo_pot, params_disk_rho, dict_data, num_Vbin,
+                         jeans_z_int_max=5.0, sigma_frac_3d=0.02, v_sys=0.0,
+                         Rzphi_n_tot=360, Rzphi_n_grid=jnp.array([10, 6, 6]),
+                         Rzphi_lim_grid=jnp.array([[0, 10.], [-3, 3], [-jnp.pi, jnp.pi]]),
+                         xy_lim_grid=jnp.array([[-10., 10.], [-3., 3.]]),
+                         xy_n_grid=jnp.array([60, 40]),
+                         nnls_maxiter=200, regularization=1.0, n_realizations=4,
+                         anisotropy_b=1.0,
+                         err_den_meff=None, n_boot_meff=None):
+    """build_model_acc + m_eff.
+
+    err_den_meff : fractional error on the surface density used for the m_eff bootstrap.
+        Pass the SAME value the likelihood scores with (ERR_DEN_LOGL = 0.03), so chi2 and
+        m_eff refer to one error model and AIC = chi2 + 2*m_eff is internally consistent.
+        The NNLS keeps its own 1% internally -- that is an up-weighting of the density block,
+        not a claim about the error, and it is deliberately left alone.
+        None -> fall back to the NNLS's own sig_xy.
+    n_boot_meff : number of m_eff bootstraps (STATIC, it sets a shape).  None -> all rows of
+        the stored standard normals after row 0.  ~10 is enough: only dm_eff/dlambda needs to
+        be accurate (Thomas & Lipka 2022, sec. 8).
+
+    Adds to the returned dict:
+        m_eff       scalar, summed over ALL bins and the 5 data channels
+        m_eff_bins  (5, n_xy_bins) per-channel per-bin contributions, already averaged over
+                    the bootstraps.  Sum these under the likelihood's own KEEP mask so chi2
+                    and m_eff cover the SAME data points.
+        weights     (1, n_orb) from the UNPERTURBED fit -- this path does not marginalise.
+    """
+    # jeans_z_int_max is deliberately NOT forwarded.  jeans.get_w0_new_improved declares
+    # z_int_max STATIC, and build_model_acc only gets away with passing it because callers
+    # never supply it -- an unpassed default stays a concrete Python float, whereas an
+    # explicitly passed one becomes a tracer and the static-argument hash then fails with
+    # "unhashable type: DynamicJaxprTracer".
+    assert jeans_z_int_max == 5.0, (
+        'jeans_z_int_max must stay at build_model_acc default 5.0 on the m_eff path: '
+        'forwarding it explicitly makes it a tracer, and get_w0_new_improved needs it static')
+    res = build_model_acc(
+        density_func, potential_func, acceleration_func, potential_func_axi, density_func_axi,
+        params_halo_pot, params_disk_rho, dict_data, num_Vbin,
+        sigma_frac_3d=sigma_frac_3d, v_sys=v_sys,
+        Rzphi_n_tot=Rzphi_n_tot, Rzphi_n_grid=Rzphi_n_grid, Rzphi_lim_grid=Rzphi_lim_grid,
+        xy_lim_grid=xy_lim_grid, xy_n_grid=xy_n_grid, nnls_maxiter=nnls_maxiter,
+        regularization=regularization, n_realizations=n_realizations,
+        return_design=True, anisotropy_b=anisotropy_b)
+
+    # ---- the ingredients, all already built by build_model_acc ---------------------------
+    A_Rzphi, A_xy = res['A_Rzphi'], res['A_xy']
+    A_h1, A_h2, A_h3, A_h4 = res['A_h1'], res['A_h2'], res['A_h3'], res['A_h4']
+    gamma_kin, y_xy, sig_xy = res['gamma_kin'], res['y_xy'], res['sig_xy']
+    mmpo = res['mean_mass_per_orb']
+    y_Rzphi = res['density_3d']                     # already divided by mean_mass_per_orb
+    sig_Rzphi = sigma_frac_3d * y_Rzphi + 1e-10 / mmpo      # as model.py:1113 + :1135
+    EPS0 = 1e-10
+    y_h = [dict_data['h%d_data' % k] for k in (1, 2, 3, 4)]
+    sig_A = [dict_data['h%d_data_err' % k] + EPS0 for k in (1, 2, 3, 4)]
+    v0 = dict_data['v0'] - v_sys
+    s = dict_data['s']
+    _args = (A_Rzphi, A_xy, A_h1, A_h2, A_h3, A_h4)
+    _sigs = (sig_Rzphi, sig_xy, sig_A[0], sig_A[1], sig_A[2], sig_A[3])
+
+    # ---- pass 1: the EXISTING solver, on the unperturbed data -----------------------------
+    w0 = solve_nnls_admm_bootstrap(
+        *_args, y_Rzphi, y_xy, gamma_kin,
+        y_xy[None, :], y_h[0][None, :], y_h[1][None, :], y_h[2][None, :], y_h[3][None, :],
+        *_sigs, lambda_reg=regularization, maxiter=nnls_maxiter)
+
+    # f(Th_y).  compute_model_single_GH_vmap returns the density in the SAME rescaled units
+    # as y_xy (build_model_acc converts to luminosity only afterwards, model.py:1172).
+    d3_0, den0, h10, h20, h30, h40, V0, sg0 = compute_model_single_GH_vmap(
+        w0, *_args, gamma_kin, v0, s)
+    f0 = [den0[0], h10[0], h20[0], h30[0], h40[0]]
+
+    # ---- bootstrap data drawn around the FIT ---------------------------------------------
+    nb = dict_data['XY_standard_normal'].shape[0] - 1 if n_boot_meff is None else n_boot_meff
+    sn = [dict_data['XY_standard_normal'][1:nb + 1]] + \
+         [dict_data['h%d_standard_normal' % k][1:nb + 1] for k in (1, 2, 3, 4)]
+    # err_den_meff = 0.0 -> THE SURFACE DENSITY IS A HARD CONSTRAINT, not data being fitted.
+    # Its mock is the fit itself with NO noise added, so every bootstrap solves against the same
+    # density and the channel contributes nothing to m_eff or to chi2_boot.  This is Lipka &
+    # Thomas's structure (2021, eq. 3): the light is in neither the criterion nor the flexibility
+    # count.  MEASURED consequence (aic_diagnostics/daic_dataset.py, S/N 230): rho rises
+    # 0.872 -> 0.957 and sigma_dAIC falls 43.8 -> 23.7, with sigma_AIC still exactly on its
+    # Gaussian floor -- the best-conditioned configuration we have.
+    HARD_DEN = (err_den_meff is not None) and (float(err_den_meff) == 0.0)
+    eps_xy = sig_xy if err_den_meff is None else err_den_meff * y_xy
+    eps = [eps_xy] + sig_A
+    if HARD_DEN:
+        # broadcast the unperturbed fit to every bootstrap row; eps_xy is 0 and is never divided by
+        z = [jnp.broadcast_to(f0[0][None, :], sn[0].shape)] + \
+            [f0[c][None, :] + sn[c] * eps[c][None, :] for c in range(1, 5)]
+    else:
+        z = [f0[c][None, :] + sn[c] * eps[c][None, :] for c in range(5)]
+
+    # ---- pass 2: the SAME solver, on the perturbed batch -----------------------------------
+    w_z = solve_nnls_admm_bootstrap(
+        *_args, y_Rzphi, y_xy, gamma_kin, z[0], z[1], z[2], z[3], z[4],
+        *_sigs, lambda_reg=regularization, maxiter=nnls_maxiter)
+    _, den_z, h1z, h2z, h3z, h4z, _, _ = compute_model_single_GH_vmap(
+        w_z, *_args, gamma_kin, v0, s)
+    fz = [den_z, h1z, h2z, h3z, h4z]
+
+    # ---- m_eff (Thomas & Lipka 2022, eqs. 6-7) -------------------------------------------
+    per_bin = []
+    for c in range(5):
+        if HARD_DEN and c == 0:
+            # 0/0 would be NaN and would poison m_eff and every downstream sum.  A constraint
+            # that is never perturbed has, by definition, zero effective freedom.
+            per_bin.append(jnp.zeros_like(f0[0]))
+            continue
+        a = (fz[c] - f0[c][None, :]) / eps[c][None, :]
+        b = (z[c] - f0[c][None, :]) / eps[c][None, :]
+        per_bin.append(jnp.mean(a * b, axis=0))          # mean over bootstraps -> (n_bins,)
+    m_eff_bins = jnp.stack(per_bin, axis=0)              # (5, n_bins)
+
+    # ---- per-realisation chi2, for the dAIC calibration ----------------------------------
+    # Wang+2026 sec. 5.3 calibrate the model-selection threshold by refitting mock data drawn
+    # around the best fit and looking at the SCATTER of AIC differences between two models.
+    # The refits already exist here (pass 2), so the chi2 of each refit against its own mock
+    # costs nothing extra.  Both models see the SAME standard normals (they are fixed in
+    # dict_data), so the realisations are PAIRED and the common-mode noise cancels in the
+    # difference -- which is the whole point (their sigma_AIC 42 -> sigma_dAIC 11).
+    _c = [jnp.zeros(fz[0].shape[0]) if (HARD_DEN and c == 0) else
+          jnp.sum(((fz[c] - z[c]) / eps[c][None, :])**2, axis=1) for c in range(5)]
+    chi2_boot = sum(_c)                                  # (n_boot,) all 5 channels
+    chi2_boot_kin = sum(_c[1:])                          # (n_boot,) h1-h4 only
+
+    light_to_mass_ratio = 1 / params_disk_rho['mass_to_light_ratio']
+    out = dict(res)
+    for k in ('A_xy', 'A_h0', 'A_h1', 'A_h2', 'A_h3', 'A_h4', 'A_Rzphi',
+              'gamma_kin', 'y_xy', 'sig_xy', 'mean_mass_per_orb'):
+        out.pop(k, None)     # never return the design matrices: ~490 MB per call
+    # EVERY model vector is rebuilt from w0, so build_model_acc's own bootstrap solve has no
+    # live consumer and XLA can eliminate it.
+    # m_eff_kin EXCLUDES the surface-density channel.  The density is still scored in chi2;
+    # only its flexibility charge is dropped.  NOTE this is NOT the structure of the papers:
+    # Lipka & Thomas (2021, eq. 3) minimise chi2 over the LOSVDs alone and treat the light as a
+    # hard constraint that is in NEITHER chi2 nor m_eff, while Wang+2026's lensing term (eq. 13)
+    # is in chi2 with no m_eff charge only because it depends on the MASS parameters and not on
+    # the orbital weights.  Our surface density IS fitted by the weights (the A_xy block), so
+    # charging no flexibility for it credits the chi2 it buys without paying for it.  Kept as a
+    # deliberate, reversible choice -- both scalars are returned so either can be used.
+    out.update({
+        'density_3d_model': d3_0,
+        'surface_density': den0 * mmpo * light_to_mass_ratio,
+        'h1': h10, 'h2': h20, 'h3': h30, 'h4': h40, 'V': V0, 'sigma': sg0,
+        'weights': w0,
+        'm_eff': jnp.sum(m_eff_bins),            # all 5 channels
+        'm_eff_kin': jnp.sum(m_eff_bins[1:]),    # h1-h4 only -- the one the likelihood uses
+        'm_eff_bins': m_eff_bins,                # (5, n_bins): logSig, h1, h2, h3, h4
+        'chi2_boot': chi2_boot,                  # (n_boot,) refit vs its own mock, all channels
+        'chi2_boot_kin': chi2_boot_kin,          # (n_boot,) h1-h4 only
+    })
+    return out
