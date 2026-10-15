@@ -534,3 +534,62 @@ def get_density(x, y, z, params):
 
     # Poisson equation → ρ = Laplacian / (4πG)
     return laplacian / (4*jnp.pi*G)
+
+
+# ---------------------------------------------------------------------------------------
+# get_phi_m_split -- one spline object, two grids.  ADDITIVE: get_phi_m above is untouched.
+#
+# WHY.  `Rmin` sets BOTH the innermost spline node AND (through `Rmin_map = R[1]`) the inner
+# edge of the QUADRATURE DOMAIN, and the quadrature is a fixed Simpson rule on a log map that
+# must cover ln(1 + Rmax/R[1]) e-folds with sqrt(N_int) nodes.  So the two harmonic families
+# want OPPOSITE grids:
+#     m = 0   needs the quadrature to reach the centre      -> small Rmin  (keeps inner mass)
+#     m >= 2  needs its e-folds spent where the bar is      -> larger Rmin (1.38x finer at 0.02)
+# Raising Rmin alone costs -24.6% in m=0 at R = 0.1 kpc on a density with central mass;
+# leaving it at 1e-3 costs up to -40.9% in m=2 at R = 2 kpc.  See
+# SCHWARMAX_PIPELINE/docs/CYLSPLINE_ACCURACY.md.
+#
+# This builds m>=2 on the FINE grid, m=0 on the inner-reaching grid, resamples m=0 onto the
+# fine grid and returns ONE dict -- so `get_acc` is called ONCE and the integration cost is
+# UNCHANGED (x1.00).  Measured: m=2 error identical to evaluating the two separately, m=0
+# within 0.06% of the inner-reaching build above R = 0.1 kpc.
+#
+# HOST GRID CAVEAT: the result is hosted on the `Rmin_mm` grid, so below that radius `get_acc`
+# EXTRAPOLATES.  With Rmin_mm = 0.02 the object is valid for R >~ 0.02 kpc.  If orbits sample
+# inside that, evaluate the two builds separately and ADD the forces instead (x1.18 on the
+# integration, exact on the production grid).
+#
+# NOT NEEDED when the density is EMPTY at the centre -- e.g. a dgdp cube, which is identically
+# zero inside r = 0.025 kpc.  There a single `get_phi_m(..., Rmin=0.02, ...)` is both correct
+# and cheapest; this function is for densities that DO carry mass to R = 0.
+def get_phi_m_split(rho_fn, params, NR, NZ, Rmin_m0, Rmin_mm, Rmax, Zmin, Zmax,
+                    Mmax, Nphi, N_int):
+    """get_phi_m with m=0 and m>=1 built on different radial grids, merged into one object.
+
+    Rmin_m0 : inner bound for the m = 0 build   (e.g. 1e-3 -- must reach the central mass)
+    Rmin_mm : inner bound for the m >= 1 build  (e.g. 0.02 -- the grid the result is HOSTED on)
+    Every other argument is passed to both builds unchanged.
+    """
+    host = get_phi_m(rho_fn, params, NR, NZ, Rmin_mm, Rmax, Zmin, Zmax, Mmax, Nphi, N_int)
+    if Rmin_m0 == Rmin_mm:
+        return host
+    inner = get_phi_m(rho_fn, params, NR, NZ, Rmin_m0, Rmax, Zmin, Zmax, 0, Nphi, N_int)
+
+    # host node positions, scaled -> physical, then resample the inner build's m = 0 there
+    Rp, zp = _Rz_rescale_inverse(host['Rgrid'], host['Zgrid'], host['R0'][0])
+    RR, ZZ = jnp.meshgrid(Rp, zp, indexing='ij')
+    val = jax_rho_m_eval(0, RR, ZZ, inner['Rgrid'], inner['Zgrid'],
+                         inner['Phi_m_real'], inner['Phi_m_img'],
+                         inner['Mx_real'], inner['My_real'], inner['Mx_img'], inner['My_img'],
+                         inner['R0'][0])
+    vr, vi = jnp.real(val), jnp.imag(val)
+    out = dict(host)
+    out['Phi_m_real'] = host['Phi_m_real'].at[0].set(vr)
+    out['Phi_m_img'] = host['Phi_m_img'].at[0].set(vi)
+    Mx, My = jax_precompute_splines((host['Rgrid'], host['Zgrid']), vr)
+    out['Mx_real'] = host['Mx_real'].at[0].set(Mx)
+    out['My_real'] = host['My_real'].at[0].set(My)
+    Mx, My = jax_precompute_splines((host['Rgrid'], host['Zgrid']), vi)
+    out['Mx_img'] = host['Mx_img'].at[0].set(Mx)
+    out['My_img'] = host['My_img'].at[0].set(My)
+    return out
