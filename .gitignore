@@ -5,3 +5,19 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 example/ngc4371_milestone_acceptance.pkl
+
+# N-body AIC example: run outputs (the notebooks and scripts write these into example/)
+example/figures/
+example/_test_*/
+example/emcee_*.h5
+example/emcee_results_*.pkl
+example/minimisation_result_*.npy
+example/minimiser_pos_*.npy
+example/minimiser_val_*.npy
+example/mcmc_checkpoint_*.pkl
+example/mcmc_results_*.pkl
+example/mcmc_posterior_*.csv
+example/datavsmodel_*.npz
+example/structure_vs_nbody_*.npz
+example/family_fit_to_nbody*.npz
+example/diagnose_*.json

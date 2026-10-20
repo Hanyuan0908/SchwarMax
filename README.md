@@ -22,6 +22,14 @@ This code accompanies the paper:
 > **SchwarMAX: a GPU-friendly Schwarzschild orbit-superposition modelling framework**
 > H. Zhang, D. Chemaly, E. Vasiliev, V. Belokurov, N. W. Evans, J. Shen (2026), submitted to MNRAS.
 
+> **You are on the `developing-code` branch.** `main` is the published code. This branch adds,
+> on top of it: the AIC likelihood with the effective number of orbital parameters `m_eff`
+> (Thomas & Lipka 2022), a Fourier-ring 3-D density constraint, an explicit m=0 density for the
+> Jeans seeding (`density_func_axi`, now a **required** argument of every `*_acc` builder), digital-twin
+> trajectories on the Fourier path, and the N-body AIC examples. It also fixes a bug that
+> under-scaled the whole design matrix of the orbit-library average by up to 10%, so `build_model_acc`
+> results differ slightly from `main`. See [New on this branch](#new-on-this-branch).
+
 ---
 
 ## What the method does
@@ -57,7 +65,8 @@ The package modules live at the repository root. Put the repo root on your
 
 | File | Purpose |
 |------|---------|
-| `model.py` | **Main entry points.** v2 (recommended): `build_model_acc`, `get_model_with_orbit_acc`, `model_deltaChi2_jackknife_acc`. v1 (analytic disc+bar only): `build_model`, `get_model_with_orbit`, `model_deltaChi2_jackknife` |
+| `model.py` | **Main entry points.** AIC (this branch): `build_model_acc_meff_fourier`, `build_model_acc_meff`, `build_model_acc_fourier`, `get_model_with_orbit_acc_fourier`. v2: `build_model_acc`, `get_model_with_orbit_acc`, `model_deltaChi2_jackknife_acc`. v1 (analytic disc+bar only): `build_model`, `get_model_with_orbit`, `model_deltaChi2_jackknife` |
+| `fourier3d.py` | The Fourier-ring 3-D density block: ring edges, the target's cos/sin(m phi) coefficients, their errors |
 | `likelihood.py` | `make_mge_logL` (v2 worked example), `model_likelihood` (v1 MCMC log-likelihood), `calculate_delta_chi2` |
 | `mge_model.py` | MGE density and the exact 1-D-quadrature MGE potential builder (`get_phi_m_exact`) |
 | `deprojection.py` | MGE deprojection for a barred galaxy: triaxial bar axis ratios, inclination floor |
@@ -141,8 +150,12 @@ CylindricalSpline, an analytic profile, or any sum of these:
 ```python
 from model import build_model_acc
 res = build_model_acc(density_func, potential_func, acceleration_func, potential_func_axi,
+                      density_func_axi,                       # required on this branch
                       params_halo_pot, params_disk_rho, dict_data, num_Vbin, ...)
 ```
+
+* `density_func_axi` is the **m=0 density** that matches `potential_func_axi`; the Jeans seeding
+  needs both, and on this branch they are passed rather than derived.
 
 * `acceleration_func` is **required, with no fallback** — splines and MGEs supply their own
   analytic gradient, and the orbit integrator calls it ~1e9 times per model evaluation.
@@ -161,6 +174,121 @@ schema, how to build your own forward model from the low-level pieces (custom
 potentials, the integrator, the NNLS solver), and a list of real-world pitfalls
 (unit and angle conventions, bootstrap-stacked outputs, jackknife masking, JIT
 recompilation). Read this before writing new code against the package.
+
+### 5. The AIC pipeline on the N-body mock — `example/SchwarMAX_Nbody_AIC*.ipynb`
+
+The same mock as `example_schwarmax.ipynb`, modelled with `build_model_acc_meff_fourier` and the
+likelihood `logL = -0.5 (chi2_kin + 2 m_eff_kin + chi2_den) / S2`. The stellar mass is not sampled:
+it is derived from M/L and the observed light, `M_star * p(theta) = M/L * L`, where `p` is the
+fraction of the model's own stellar mass that projects into the chosen region. 12 parameters.
+
+| notebook | stellar disc | sampler | `L` = the light inside | outputs in `example/` |
+|---|---|---|---|---|
+| [`SchwarMAX_Nbody_AIC.ipynb`](example/SchwarMAX_Nbody_AIC.ipynb) | Miyamoto–Nagai | BlackJAX RMH | a 20 kpc sky box | `*_aic_tied.*` |
+| [`SchwarMAX_Nbody_AIC_expdisc.ipynb`](example/SchwarMAX_Nbody_AIC_expdisc.ipynb) | double exponential, CylSpline potential | emcee | a 20 kpc sky box | `*_aic_exp.*` |
+| [`SchwarMAX_Nbody_AIC_expdisc_field.ipynb`](example/SchwarMAX_Nbody_AIC_expdisc_field.ipynb) | double exponential, CylSpline potential | emcee | the IFU field (summed from the data) | `*_aic_exp_field.*` |
+
+**Running them.**
+- **On Colab:** upload the repository folder to `My Drive` as `SchwarMAX`, open a notebook on a GPU
+  runtime and run the cells in order. Cell 2 finds the folder by itself (edit `DRIVE_FOLDER` if
+  you used another name). It pins `jax[cuda12]==0.7.2` as a matched set and removes any other
+  `jax-cuda*` plugin, because a stray plugin fails with `Unexpected PJRT_ExecuteOptions size`.
+- **Locally:** run the notebook from `example/`, and it finds the repository root one level up.
+- **Read cell 6 first.** It flips the mock's handedness, because every `*_acc` builder seeds the
+  library anticlockwise and the mock was made for the clockwise `build_model`.
+
+**emcee batching.** Each emcee step evaluates the walkers in groups: 2 for the DE move, 4 for the
+snooker move. Each group is padded to a whole `EMCEE_CHUNK`, so **`EMCEE_CHUNK` must divide
+`EMCEE_WALKERS / 4`**. 32 walkers with a chunk of 8 cost the same per step as 24 walkers.
+
+**What these runs showed.** Tied to the 20 kpc box, the exponential-disc chain recovers M/L, Ω,
+h_z and the viewing angles, but finds R_d ≈ 3.9 kpc against 6.5 and L_bar ≈ 3.7 kpc against 5.3.
+The cause is the tie. It fixes the model's light inside the box, an exponential over-fills
+10–20 kpc where the N-body is truncated, and so the truth's shapes put 19% too little light inside
+the IFU field. Tying the mass to the field light instead cuts the truth's logL deficit from 59 to
+10. The field-tied chain has not been run yet.
+
+### 6. Analysis scripts (in `example/`)
+
+All of them `exec` the notebooks' own cells, so they cannot drift from the model the chain sampled.
+Pass `--help` for the options.
+
+| task | script |
+|---|---|
+| **Data vs model**: Σ, V, σ, h₃, h₄ maps, as model / data / residual, with χ² per channel. `--point bestfit` (the max-logP sample) or `--point truth`. Reads BlackJAX pickles or emcee `.h5` | [`example/plot_datavsmodel_aic.py`](example/plot_datavsmodel_aic.py) |
+| Corner plot against the truth, with pulls and split R-hat | [`example/plot_corner_aic.py`](example/plot_corner_aic.py) |
+| Recovered structure vs the N-body: Σ(R), M★(<R), A₂/A₀, v_c, M_DM(<r) | [`example/compare_structure_aic.py`](example/compare_structure_aic.py) (MN disc), [`example/compare_structure_aic_exp.py`](example/compare_structure_aic_exp.py) (exponential disc) |
+| The likelihood split by channel at the truth, the median and shape swaps (`--nb` picks the notebook; `--param-only` projects the parametric model without orbits) | [`example/diagnose_expdisc_bias.py`](example/diagnose_expdisc_bias.py) |
+| Smoke-test a notebook locally (600 orbits, CPU, ~4 GB) before spending GPU time | [`example/test_example_aic_expdisc_nb.py`](example/test_example_aic_expdisc_nb.py) |
+| Rebuild `L_BOX` (the light in the 20 kpc box) from the N-body | [`example/make_mock_box_light.py`](example/make_mock_box_light.py) |
+| Rebuild the `_GH` mock (V = v₀, σ = s, the pipeline's GH basis) | [`example/make_mock_gh_basis.py`](example/make_mock_gh_basis.py) |
+| Rebuild the exponential-disc ground truth (a direct fit of the family to the N-body) | [`example/fit_family_to_nbody.py`](example/fit_family_to_nbody.py) |
+
+For the v1 pipeline, data vs model is part 2 of
+[`example/example_analysis.ipynb`](example/example_analysis.ipynb). The structure, L_BOX and
+ground-truth scripts need `agama` and the Git-LFS snapshot.
+
+### 7. Digital twins — an N-body realisation of a fitted model
+
+A twin draws particles from the **fitted orbit library itself**, so it is a realisation of the
+Schwarzschild solution, not of a smoothed distribution function. The package side is
+[`get_model_with_orbit_acc_fourier`](model.py) (same arguments as `build_model_acc_fourier`).
+It returns the unperturbed NNLS `weights` and every orbit's trajectory, `y_traj` with shape
+`(n_orbits, 1, N_max, 6)`, and `t_traj`.
+
+**There is no stand-alone twin script in this repository yet.** The driver we use is specific to
+NGC 1512 and lives outside the package. The recipe it implements, each step found necessary on
+real builds:
+
+1. **Use the Fourier path.** The regular-grid `get_model_with_orbit_acc` solves its NNLS without
+   the fourfold bar symmetry that the fit applies, so its weights belong to a different problem.
+   Measured h₁ χ² per bin: 23.7 for that twin path against 1.36 for the fit.
+   `get_model_with_orbit_acc_fourier` symmetrises every block.
+2. **Particles per orbit:** `n_i ~ Multinomial(N, w / sum(w))`.
+3. **One of the four bar images per particle.** The returned `y_traj` is the identity image only.
+   Multiply each drawn (x, y, z, vₓ, v_y, v_z) by one of these sign patterns, chosen uniformly:
+   (+,+,+,+,+,+), (+,+,−,+,+,−), (−,−,+,−,−,+), (−,−,−,−,−,−). These are the symmetry images the
+   NNLS was solved under.
+4. **Draw in continuous time.** For each particle draw `t ~ U(t_first, t_last)` over that orbit's
+   own span, and evaluate `scipy.interpolate.CubicSpline(t_traj, y_traj)(t)`. Never pick stored
+   points: the integrator is adaptive, so they are not uniform in time. Also, only about 700
+   orbits carry effective weight, so 1e6 draws produced 56,611 bit-identical particles, which a
+   tree code cannot split.
+5. **Do not add Ω × r.** The stored velocities are already inertial components in bar-frame axes.
+6. **Use a wider 3-D block for the twin than for the chain,** with the orbit seeds widened to
+   match. The NNLS only constrains weights where the 3-D block has cells, so anything outside it
+   is arbitrary in the twin.
+7. **Acceptance test:** project the particles, re-measure Σ, V, σ and h₁–h₄, and require the
+   **fit's own χ²** at the same orbit count. A twin that misses it is a twin of a model that was
+   never fitted.
+8. **Dark matter:** sample a DF (e.g. AGAMA `QuasiSpherical`) in the potential of **stars + halo**,
+   not the halo alone. Halo-only is about 2× too cold in the centre, and the halo contracts at once.
+9. **NEMO snapshots** (`agama.writeSnapshot`): kpc, km/s, mass column = G·M with
+   G = 4.300917e-6 kpc (km/s)² / M☉.
+
+---
+
+## New on this branch
+
+- **`build_model_acc_meff`, `build_model_acc_meff_fourier`.** The generalized AIC of Thomas & Lipka
+  (2022): `m_eff`, the effective number of free orbital parameters, measured from bootstrapped
+  refits at fixed λ. `regularization` stays traced, so λ can be sampled (the notebooks do).
+  - Per-channel `m_eff_bins` and paired `chi2_boot` are returned for calibrating ΔAIC.
+  - `err_den_meff=0.0` makes the surface density a hard constraint in the flexibility count.
+- **`build_model_acc_fourier`, `fourier3d.py`.** The 3-D constraint is the cos/sin(mφ) content of
+  rings in (R, |z|), even m ≤ `mmax`, instead of regular (R, z, φ) cells.
+  - The errors are tied to the ring mass (`sigma_scheme='a0'`), not to the mode amplitudes, which
+    would reward a stronger bar.
+  - Ring spacing is uniform in R^`pow_R` and |z|^`pow_z`; `close_inner=True` closes the midplane slab.
+- **`density_func_axi`**, the m=0 density for the axisymmetrised Jeans seeding. It is now a required
+  positional argument of every `*_acc` builder, after `potential_func_axi`.
+- **`get_model_with_orbit_acc_fourier`**, trajectories for twins, symmetrised and carrying `v_sys`.
+- **`CylindricalSpline.get_phi_m_split`.**
+- **Fix: the orbit-library realisation average divided by `valid.sum() + 0.1`.** That under-scaled
+  the whole design matrix, by 10% on twins and 2.4% in the MCMC. It now divides by
+  `max(valid.sum(), 1)`.
+- `model.SCHWARMAX_FEATURES` lists these, and the notebooks assert on it, so an older copy of the
+  package fails at import instead of hours into a chain.
 
 ---
 
@@ -194,6 +322,8 @@ full convention and the common footguns.
 
 - `example/mock_Nbody_galaxy_beta65_gamma45_D50.pkl` — Voronoi-binned mock IFU
   data (Σ, V, σ, h₁–h₄ with errors), at α = 25°, β = 65°, γ = 45°, D = 50 Mpc.
+- `example/mock_Nbody_galaxy_beta65_gamma45_D50_GH.pkl` — the same mock with V and σ in the
+  pipeline's Gauss–Hermite basis (V = v₀, σ = s); read by `plot_datavsmodel_aic.py`.
 - `example/mcmc_checkpoint.pkl` — a finished 12-D chain (1000 steps × 32 chains).
 - `example/Bar_model_TG21/model/t_t0_7` — the source *N*-body snapshot
   (Tepper-Garcia et al. 2021 Milky-Way analogue; Git LFS) and its precomputed AGAMA
