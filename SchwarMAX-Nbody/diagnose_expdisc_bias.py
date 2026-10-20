@@ -19,9 +19,9 @@ GPU numbers, so compare points with each other, not with the chain's logP.
 import argparse, json, os, sys, threading, time, resource
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # the package (model.py, utils.py, ...); notebooks, data and the N-body snapshot sit here in example/
+ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
 P = argparse.ArgumentParser()
-P.add_argument('--chain', default=os.path.join(HERE, 'emcee_aic_exp.h5'),
+P.add_argument('--chain', default=os.path.join(ROOT, 'example', 'emcee_aic_exp.h5'),
                help='the chain whose median is the point M')
 P.add_argument('--nb', default=os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc.ipynb'),
                help='the notebook whose likelihood is evaluated, e.g. the IFU-field-normalised '
@@ -30,7 +30,7 @@ P.add_argument('--points', default='T,M,M+shape,M+Rd,M+L,T+shape')
 P.add_argument('--norbit', type=int, default=7500)
 P.add_argument('--nreal', type=int, default=4, help="the notebook's N_REALIZATIONS")
 P.add_argument('--nboot', type=int, default=9, help="the notebook's N_BOOT_MEFF")
-P.add_argument('--out', default=os.path.join(HERE, 'diagnose_expdisc_bias.json'))
+P.add_argument('--out', default=os.path.join(ROOT, 'example', 'diagnose_expdisc_bias.json'))
 P.add_argument('--cap', type=float, default=16.0, help='abort if RSS exceeds this many GB')
 P.add_argument('--param-only', action='store_true',
                help='no orbits: project the PARAMETRIC density into the 609 bins at every point '

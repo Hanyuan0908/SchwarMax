@@ -1,0 +1,165 @@
+# SchwarMAX-Nbody — the AIC pipeline on a mock N-body galaxy
+
+A self-contained test of the SchwarMAX Schwarzschild pipeline against a mock galaxy whose
+generating parameters are known. Everything needed is in this folder.
+
+## Run it
+
+1. Upload **this whole folder** to the top level of your Google Drive (`My Drive`), keeping the
+   name `SchwarMAX-Nbody`.
+2. Open `SchwarMAX_Nbody_AIC.ipynb` in Colab and pick a **GPU** runtime
+   (Runtime -> Change runtime type -> T4 or better).
+3. Run the cells in order.
+
+Cell 2 mounts Drive and locates this folder automatically; it only needs editing
+(`DRIVE_FOLDER`) if you renamed the folder or put it in a subfolder. The notebook also runs
+locally if it sits next to `model.py`.
+
+Cell 2 pins **`jax[cuda12]==0.7.2` as a matched set** and restarts nothing. Pinning only `jax`
+and `jaxlib` leaves `jax-cuda12-plugin` / `jax-cuda12-pjrt` newer, which fails later with
+`XlaRuntimeError: Unexpected PJRT_ExecuteOptions size` at the first `from utils import ...` —
+it looks like an import error but is a version mismatch.
+
+## What is in the folder
+
+```
+SchwarMAX_Nbody_AIC.ipynb            the notebook — open this
+example/
+  mock_Nbody_galaxy_beta65_gamma45_D50.pkl    the mock (609 Voronoi bins)
+  (minimiser + MCMC outputs are written here)
+*.py                                 the SchwarMAX package
+LICENSE
+```
+
+Third-party requirements beyond what Colab ships: `blackjax` and `corner`, both installed by
+cell 2. The package itself imports only `jax`, `numpy`, `scipy` and `astropy`.
+
+## What the notebook does
+
+The 12 physical parameters, the density (MN disc + T3 bar + V4 bulge + NFW halo) and the mock are
+the same as the upstream `example/example_schwarmax.ipynb`, so the two read side by side. The
+**likelihood** is different:
+
+| | `example_schwarmax.ipynb` | this notebook |
+|---|---|---|
+| objective | log-mean-exp over data bootstraps | `-0.5*(chi2_kin + 2*m_eff_kin + chi2_den)/S2` |
+| bootstraps | marginalised over | spent on `m_eff`; the fit itself is unperturbed |
+| model builder | `build_model` | `build_model_acc_meff_fourier` |
+| 3-D block | regular (R,z,phi) cells | Fourier rings, even m<=6 |
+| chi2 scale | jackknife `delta_chi2` | `sqrt(2 N_kin)`, validated by `sigma_AIC` |
+| parameters | 12 | **13** — `log10(lambda)` is sampled |
+| sampler | BlackJAX adaptive RMH | **unchanged** |
+| tracer positions | `load_data_bootstrap` | **unchanged** |
+
+`m_eff` is the effective number of free parameters the orbit solution actually uses (Thomas &
+Lipka 2022, eq. 15). Judging orbit models by chi2 alone rewards flexibility, and the parameter it
+corrupts most is the inclination — which this mock knows the truth of, so this is a test with an
+answer. Cell 18 prints the pull of every parameter against its generating value.
+
+## Read this before you change the data
+
+**The mock is flipped in handedness by cell 6, and it has to be.**
+
+`jeans.get_w0_new` (used by the old `build_model`) seeds the orbit library **clockwise**
+(`<v_phi>` = -125.5 km/s, 14% of orbits with `Lz > 0`). Every `build_model_acc*`, including the
+one used here, seeds **anticlockwise** (+128.4 km/s, 87% with `Lz > 0`) — deliberately: it is the
+convention of the validated NGC 4371 runs, paired with `+Omega_bar` so the bar co-rotates. This
+mock was generated for the first convention.
+
+Measured, same theta, 7500 orbits, `chi2_total`:
+
+| mock | `build_model` (old) | this pipeline |
+|---|---|---|
+| as delivered | **14 940** | 62 599 |
+| flipped | 93 522 | **10 187** |
+
+They swap. To flip a bin dict, negate `v0` and the **odd** moments `h1`, `h3` (and `V_data`, for
+consistency of anything you plot). `h2`, `h4`, `s` and `sigma_data` are **even** in v and must not
+change; the positions do not move.
+
+To flip a bin dict, apply `v_los -> -v_los`: negate every quantity **odd** in *v* — `v0`,
+`V_data`, `h1_data`, `h3_data` — and nothing else. `s`, `sigma_data`, `h2_data`, `h4_data` are
+**even** in *v*; the `*_err` entries are magnitudes; the `*_standard_normal` draws are symmetric;
+the grid geometry and the tracer positions do not move. Cell 6 classifies all 47 keys the data
+dict carries and asserts the classification is complete, so the flip is consistent by
+construction even for the entries the fit never reads.
+
+`FLIP_HANDEDNESS` in cell 6 is a **manual switch, with no automatic check**. Set it from how your
+data were constructed. Deciding it from fit quality is not stable enough to automate — measured at
+600 orbits, right vs wrong:
+
+| | right | wrong |
+|---|---|---|
+| `SUM` (sum of per-bin chi2) | 48.1 | 245.0 |
+| `m_eff_kin` | +47.8 | -13.6 |
+| `corr(model V, data V)` | +0.996 | **+0.893** |
+
+The velocity correlation stays positive either way, because the NNLS can reproduce a rotation
+field from a counter-rotating library by up-weighting the minority of co-rotating orbits. The
+chi2 and `m_eff` gap is large here, but it is a difference of degree on a mock with a known
+answer, not a reliable switch on real data.
+
+## Cost
+
+Cells are numbered here by their **position in the notebook** (cell 0 is the title). Jupyter
+labels only the code cells, `[1]`-`[10]`, so the numbers you see while running are different:
+
+| position | 2 | 4 | 6 | 8 | 10 | 11 | 13 | 15 | 17 | 18 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **Jupyter `[n]`** | 1 | 2 | 3 | 4 | 5 | 6 | **7** | 8 | 9 | 10 |
+
+The expensive cells, at the notebook's default 7500 orbits:
+
+* cell 10 (`[5]`, one likelihood call) — about a minute, most of it JIT compilation
+* cell 13 (`[7]`, the minimiser) — `N_PART*(N_ITER+1)` = **968 likelihood evaluations**. The
+  parent notebook's saved output measures 63.84 s/step for 32 chains on a T4, i.e. 2.0 s per
+  vmapped evaluation for the *old* likelihood; the AIC likelihood is dearer, so budget upward
+  of **35 min**. The progress bar ticks once per iteration — `N_PART` evaluations, about 16 s
+  apart — and the one-off JIT compilation is timed and printed *before* the bar starts, so a
+  long initial pause is reported rather than silent.
+* cell 15 (`[8]`, the chi2-scale calibration, 6 model evaluations) — minutes
+* cell 17 (`[9]`, MCMC, 32 chains x 1000 steps) — the upstream run took **17h44m**; it
+  checkpoints every 5 steps to `example/mcmc_checkpoint_aic.pkl`, so set `resume=True` after a
+  disconnect
+
+To shake the notebook out cheaply first, drop `N_ORBIT` to ~1000 and `N_ITER` in cell 13. At low
+orbit counts the library is starved and the surface-density chi2 is much worse than the
+7500-orbit value; that is expected and is not a bug.
+
+### Why the minimiser is a vmapped hill climb, not scipy's Nelder-Mead
+
+Both reasons were measured, not assumed.
+
+**It has to be batched to be watchable.** Nelder-Mead is serial, and `maxiter = 40*NDIM` rails
+at 520 iterations for 672-705 function calls per start (scipy 1.17; `maxfev` is left at infinity
+when only `maxiter` is passed, so nothing else bounds it). Eight starts is 5498 evaluations, and
+a bar over the *starts* advances once per ~690 of them — 23 min per tick at 2.0 s/eval, with
+nothing to watch in between, and over 3 h for the cell.
+
+**Serial and vmapped evaluation are not the same number.** Each is bit-reproducible and
+independent of what else is in the batch, but they land on different points of the NNLS's
+degenerate ridge. At the truth, 400 orbits, float32: 5 of 159 active orbits differ, `sum(w)` by
+0.29%, and `chi2_kin` +8.9% against `chi2_den` -10.0% (partly cancelling, ~15 in logL). In
+float64 the same gap is 3-6x smaller (+4.4%/-4.5%/+5.9% in float32 vs -1.6%/-0.7%/+1.0% in
+float64 at matched 300 orbits), so it is mostly float32 conditioning plus a residue from the
+ADMM's fixed 200 iterations. Since the MCMC vmaps 16 chains at a time, a serially-optimised
+start is the optimum of a surface the sampler never evaluates. The hill climb vmaps, so the
+minimiser and the sampler see one surface.
+
+## Knobs
+
+Everything that is a choice is set at the top of cell 8 and marked `<<< TUNE ME`. Two warnings:
+
+* `ANISO_B` must be passed as a **keyword** to the builder, as the notebook does. Patching
+  `jeans.get_w0_new_improved` with `functools.partial` does **nothing** — the builders forward
+  their own `anisotropy_b=anisotropy_b` with a default of 1.0, and an explicit keyword overrides
+  a partial binding. `1.0` matches the old pipeline, which passes 1.0 positionally
+  (`jeans.py:89`).
+* `ERR_DEN_MEFF = 0.0` makes the surface density a hard constraint in the flexibility count
+  (still scored in chi2, charged no `m_eff`). This is the configuration measured to be best
+  conditioned; do not raise it without redoing the cell-15 calibration.
+
+The m=0 density and potential needed by the Jeans seeding are built by `make_m0_callables` in
+cell 4. Read its two traps before touching it: computing the m=0 part as an azimuthal quadrature
+inside the autodiff tape took memory from 0.98 GB to 5.60 GB, and tabulating the compact V4 bulge
+on that grid cannot resolve it.

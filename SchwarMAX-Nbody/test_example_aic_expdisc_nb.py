@@ -18,7 +18,7 @@ import argparse, json, os, sys, threading, time, resource, shutil
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # the package (model.py, utils.py, ...); notebooks, data and the N-body snapshot sit here in example/
+ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
 A = argparse.ArgumentParser()
 A.add_argument('--nb', default=os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc.ipynb'))
 A.add_argument('--nsamples', type=int, default=600)
@@ -26,6 +26,10 @@ A.add_argument('--nreal', type=int, default=2)
 A.add_argument('--nboot', type=int, default=3)
 A.add_argument('--scratch', default=os.path.join(HERE, '_test_expdisc_scratch'))
 A.add_argument('--cap', type=float, default=12.0, help='abort if RSS exceeds this many GB')
+A.add_argument('--expect', default=None, metavar='L1,L2',
+               help='control 5 must reproduce these two logL values (the regression gate, '
+                    'test_regression_projected.py)')
+A.add_argument('--tol', type=float, default=0.01, help='absolute logL tolerance for --expect')
 A = A.parse_args()
 
 
@@ -151,6 +155,10 @@ lv = np.asarray(jax.jit(jax.vmap(lambda t: G['model_likelihood'](t, G['dict_data
                                                                  jnp.sqrt(G['S2']))))(jnp.asarray(np.stack([th, thB]))))
 print('\n5. vmapped logL over 2 thetas: %s  (%.0f s, peak RSS %.2f GB)' % (lv, time.time() - t0, _rss_gb()))
 assert np.all(np.isfinite(lv))
+if A.expect:
+    _exp = np.array([float(v) for v in A.expect.split(',')])
+    print('   expected %s -> |diff| %s (tol %g)' % (_exp, np.abs(lv - _exp), A.tol))
+    assert np.all(np.abs(lv - _exp) <= A.tol), 'REGRESSION: the projected likelihood changed'
 print('   PASS')
 
 # ---------------------------------------------------------------- 6. emcee + corner, stub likelihood

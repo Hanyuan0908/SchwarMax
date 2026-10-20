@@ -41,7 +41,7 @@ JAX and only reads that cache plus the N-body snapshot for the contours.
 import argparse, json, os, pickle, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # the package (model.py, utils.py, ...); notebooks, data and the N-body snapshot sit here in example/
+ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
 
 P = argparse.ArgumentParser()
 P.add_argument('--stage', default='all', choices=('all', 'model', 'plot'))
@@ -66,7 +66,7 @@ P.add_argument('--mock', default='mock_Nbody_galaxy_beta65_gamma45_D50_GH.pkl',
                     "which is what the new pipeline's model V and sigma are.  The original "
                     "file's V/sigma are plain moments.  The FIT is the same for both: neither "
                     "V nor sigma enters the likelihood.")
-P.add_argument('--nbody', default=os.path.join(HERE,
+P.add_argument('--nbody', default=os.path.join(ROOT, 'example',
                                                'Bar_model_TG21', 'model', 't_t0_7'),
                help='N-body snapshot for the contour overlay (example_analysis uses t_t0_7)')
 P.add_argument('--cache', default=None, help='default example/datavsmodel_bestfit_<run>.npz')
@@ -112,7 +112,7 @@ def chain_file():
         return A.chain
     for run in ('aic_tied', 'aic'):                    # the newest layout first
         for kind in ('results', 'checkpoint'):
-            f = os.path.join(HERE, 'mcmc_%s_%s.pkl' % (kind, run))
+            f = os.path.join(ROOT, 'example', 'mcmc_%s_%s.pkl' % (kind, run))
             if os.path.isfile(f):
                 return f
     raise FileNotFoundError('no MCMC output in example/')
@@ -128,7 +128,7 @@ if _base.startswith('emcee_'):                         # emcee_<run>.h5 -- no re
 else:                                                  # mcmc_<results|checkpoint>_<run>.pkl
     RUN = _parts[2] if len(_parts) == 3 and _parts[0] == 'mcmc' else '_'.join(_parts)
 EXP = 'aic_exp' in RUN
-A.cache = A.cache or os.path.join(HERE, 'datavsmodel_%s_%s.npz' % (A.point, RUN))
+A.cache = A.cache or os.path.join(ROOT, 'example', 'datavsmodel_%s_%s.npz' % (A.point, RUN))
 A.tag = A.tag or '%s_%s' % (RUN, A.point)
 
 
@@ -193,7 +193,7 @@ path = %r + "/"
         if i == 6:
             orig = "filename = '/example/mock_Nbody_galaxy_beta65_gamma45_D50.pkl'"
             assert orig in src, 'cell 6 no longer names the mock the way this script expects'
-            assert os.path.isfile(os.path.join(HERE, A.mock)), A.mock
+            assert os.path.isfile(os.path.join(ROOT, 'example', A.mock)), A.mock
             src = src.replace(orig, "filename = '/example/%s'" % A.mock)
             print('   cell 6 loads example/%s' % A.mock)
         t0 = time.time()

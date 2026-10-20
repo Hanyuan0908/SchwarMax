@@ -19,7 +19,7 @@ notebook's own rule, 3 x the longest autocorrelation time.
 import argparse, json, os, pickle, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # the package (model.py, utils.py, ...); notebooks, data and the N-body snapshot sit here in example/
+ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
 P = argparse.ArgumentParser()
 P.add_argument('--chain', default=None,
                help='default example/mcmc_results_aic_tied.pkl, else mcmc_checkpoint_aic_tied.pkl')
@@ -37,7 +37,7 @@ import corner
 # ---------------------------------------------------------------- the chain
 if A.chain is None:
     for k in ('results', 'checkpoint'):
-        A.chain = os.path.join(HERE, 'mcmc_%s_aic_tied.pkl' % k)
+        A.chain = os.path.join(ROOT, 'example', 'mcmc_%s_aic_tied.pkl' % k)
         if os.path.isfile(A.chain):
             break
 EXP = 'aic_exp' in os.path.basename(A.chain)

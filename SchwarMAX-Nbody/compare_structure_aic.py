@@ -21,12 +21,12 @@ potential_func and stellar_masses.  No orbits are integrated.
 import argparse, json, os, pickle, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # the package (model.py, utils.py, ...); notebooks, data and the N-body snapshot sit here in example/
+ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
 P = argparse.ArgumentParser()
 P.add_argument('--chain', default=None, help='default the newest *_aic_tied results/checkpoint')
 P.add_argument('--burnin', type=int, default=300)
 P.add_argument('--nsamp', type=int, default=100, help='posterior draws for the bands')
-P.add_argument('--nbody', default=os.path.join(HERE,
+P.add_argument('--nbody', default=os.path.join(ROOT, 'example',
                                                 'Bar_model_TG21', 'model', 't_t0_7'))
 P.add_argument('--outdir', default=os.path.join(HERE, 'figures'))
 P.add_argument('--cap', type=float, default=6.0, help='abort if RSS exceeds this many GB')
@@ -55,7 +55,7 @@ import numpy as np
 # ---------------------------------------------------------------- the chain
 if A.chain is None:
     for k in ('results', 'checkpoint'):
-        A.chain = os.path.join(HERE, 'mcmc_%s_aic_tied.pkl' % k)
+        A.chain = os.path.join(ROOT, 'example', 'mcmc_%s_aic_tied.pkl' % k)
         if os.path.isfile(A.chain):
             break
 d = pickle.load(open(A.chain, 'rb'))
@@ -383,7 +383,7 @@ os.makedirs(A.outdir, exist_ok=True)
 tag = os.path.basename(A.chain).replace('.pkl', '').replace('mcmc_', '')
 outf = os.path.join(A.outdir, 'structure_vs_nbody_%s_%dsteps.png' % (tag, S.shape[0]))
 fig.savefig(outf, dpi=110)
-np.savez(os.path.join(HERE, 'structure_vs_nbody_%s.npz' % tag),
+np.savez(os.path.join(ROOT, 'example', 'structure_vs_nbody_%s.npz' % tag),
          RC=RC, EDGES=EDGES, R_VC=R_VC, R_ENC=R_ENC,
          **{'nbody_' + k: v for k, v in nbody.items()},
          **{'true_' + k: v for k, v in out['true'].items()},

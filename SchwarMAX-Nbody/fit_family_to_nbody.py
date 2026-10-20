@@ -38,9 +38,9 @@ the notebook's tie would assign it (0 = consistent with the light).
 import argparse, os, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # the package (model.py, utils.py, ...); notebooks, data and the N-body snapshot sit here in example/
+ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
 P = argparse.ArgumentParser()
-P.add_argument('--nbody', default=os.path.join(HERE,
+P.add_argument('--nbody', default=os.path.join(ROOT, 'example',
                                                 'Bar_model_TG21', 'model', 't_t0_7'))
 P.add_argument('--cap', type=float, default=6.0)
 P.add_argument('--outdir', default=os.path.join(HERE, 'figures'))
@@ -404,6 +404,6 @@ fig.suptitle('Direct fits of the stellar family to the N-body star particles (no
 os.makedirs(A.outdir, exist_ok=True)
 outf = os.path.join(A.outdir, 'family_fit_to_nbody%s.png' % SUFFIX)
 fig.savefig(outf, dpi=110)
-np.savez(os.path.join(HERE, 'family_fit_to_nbody%s.npz' % SUFFIX), R_VC=R_VC, VC_T=VC_T, E_S=E_S,
+np.savez(os.path.join(ROOT, 'example', 'family_fit_to_nbody%s.npz' % SUFFIX), R_VC=R_VC, VC_T=VC_T, E_S=E_S,
          SIG_T=SIG_T, E_A=E_A, A2_T=A2_T, **{'lp_' + k: o['lp'] for k, o in out.items()})
 print('wrote %s' % os.path.relpath(outf, HERE))

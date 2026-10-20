@@ -21,3 +21,7 @@ example/datavsmodel_*.npz
 example/structure_vs_nbody_*.npz
 example/family_fit_to_nbody*.npz
 example/diagnose_*.json
+example/diagnose_*.npy
+# mock-test folders: figures and the smoke tests' scratch space
+SchwarMAX-*/figures/
+SchwarMAX-*/_test_*/

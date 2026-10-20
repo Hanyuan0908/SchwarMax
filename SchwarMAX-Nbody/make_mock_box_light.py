@@ -19,12 +19,12 @@ import argparse, os, pickle, resource, sys, threading, time
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # the package (model.py, utils.py, ...); notebooks, data and the N-body snapshot sit here in example/
+ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
 P = argparse.ArgumentParser()
 P.add_argument('--half', type=float, default=20.0, help='box half-width on the sky [kpc]')
-P.add_argument('--nbody', default=os.path.join(HERE,
+P.add_argument('--nbody', default=os.path.join(ROOT, 'example',
                                                 'Bar_model_TG21', 'model', 't_t0_7'))
-P.add_argument('--mock', default=os.path.join(HERE,
+P.add_argument('--mock', default=os.path.join(ROOT, 'example',
                                               'mock_Nbody_galaxy_beta65_gamma45_D50.pkl'))
 P.add_argument('--cap', type=float, default=4.0, help='RSS cap [GB]; the process exits above it')
 A = P.parse_args()

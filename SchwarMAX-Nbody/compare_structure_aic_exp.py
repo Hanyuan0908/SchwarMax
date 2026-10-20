@@ -20,14 +20,14 @@ the notebook's own acceleration callable, i.e. the force the orbits feel.  No or
 import argparse, json, os, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # the package (model.py, utils.py, ...); notebooks, data and the N-body snapshot sit here in example/
+ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
 P = argparse.ArgumentParser()
-P.add_argument('--chain', default=os.path.join(HERE, 'emcee_aic_exp.h5'))
+P.add_argument('--chain', default=os.path.join(ROOT, 'example', 'emcee_aic_exp.h5'))
 P.add_argument('--burnin', type=int, default=None, help="default: the emcee cell's 3 x max(tau)")
 P.add_argument('--nsamp', type=int, default=100, help='posterior draws for the bands')
-P.add_argument('--nbody', default=os.path.join(HERE,
+P.add_argument('--nbody', default=os.path.join(ROOT, 'example',
                                                 'Bar_model_TG21', 'model', 't_t0_7'))
-P.add_argument('--mn', default=os.path.join(HERE, 'structure_vs_nbody_checkpoint_aic_tied.npz'),
+P.add_argument('--mn', default=os.path.join(ROOT, 'example', 'structure_vs_nbody_checkpoint_aic_tied.npz'),
                help='compare_structure_aic.py output to overlay (the MN chain); skipped if missing')
 P.add_argument('--outdir', default=os.path.join(HERE, 'figures'))
 P.add_argument('--cap', type=float, default=6.0, help='abort if RSS exceeds this many GB')
@@ -410,7 +410,7 @@ fig.suptitle('Exponential-disc chain vs the N-body -- %s, %d steps x %d walkers 
 os.makedirs(A.outdir, exist_ok=True)
 outf = os.path.join(A.outdir, 'structure_vs_nbody_aic_exp_%dsteps.png' % S.shape[0])
 fig.savefig(outf, dpi=110)
-np.savez(os.path.join(HERE, 'structure_vs_nbody_aic_exp.npz'),
+np.savez(os.path.join(ROOT, 'example', 'structure_vs_nbody_aic_exp.npz'),
          RC=RC, EDGES=EDGES, R_VC=R_VC, R_ENC=R_ENC,
          **{'nbody_' + k: v for k, v in nbody.items()},
          **{'true_' + k: v for k, v in out['true'].items()},

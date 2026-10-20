@@ -25,9 +25,9 @@ import hashlib, os, pickle
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)   # the package (model.py, utils.py, ...); notebooks, data and the N-body snapshot sit here in example/
-SRC = os.path.join(HERE, 'mock_Nbody_galaxy_beta65_gamma45_D50.pkl')
-DST = os.path.join(HERE, 'mock_Nbody_galaxy_beta65_gamma45_D50_GH.pkl')
+ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
+SRC = os.path.join(ROOT, 'example', 'mock_Nbody_galaxy_beta65_gamma45_D50.pkl')
+DST = os.path.join(ROOT, 'example', 'mock_Nbody_galaxy_beta65_gamma45_D50_GH.pkl')
 
 with open(SRC, 'rb') as f:
     raw = f.read()

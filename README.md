@@ -28,7 +28,8 @@ This code accompanies the paper:
 > Jeans seeding (`density_func_axi`, now a **required** argument of every `*_acc` builder), digital-twin
 > trajectories on the Fourier path, and the N-body AIC examples. It also fixes a bug that
 > under-scaled the whole design matrix of the orbit-library average by up to 10%, so `build_model_acc`
-> results differ slightly from `main`. See [New on this branch](#new-on-this-branch).
+> results differ slightly from `main`. See [New on this branch](#new-on-this-branch), and read
+> [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before contributing.
 
 ---
 
@@ -80,6 +81,8 @@ The package modules live at the repository root. Put the repo root on your
 | `CylindricalSpline.py`, `CubicSpline.py` | Cylindrical-spline potential expansion for non-analytic densities |
 | `constants.py` | Physical constants and lookup tables |
 | `example/` | End-to-end notebooks, example data, a finished MCMC checkpoint, and the NGC 4371 acceptance test |
+| `SchwarMAX-Nbody/` | The AIC pipeline tested on the N-body mock: notebooks, analysis scripts, regression gate (this branch) |
+| `docs/DEVELOPMENT.md` | **How to develop on this branch**: workstream folders, the add-only rule for the package, the regression gate |
 | `docs/LLM_GUIDE.md` | In-depth developer/agent guide (function signatures, workflows, pitfalls) |
 
 ---
@@ -175,7 +178,7 @@ potentials, the integrator, the NNLS solver), and a list of real-world pitfalls
 (unit and angle conventions, bootstrap-stacked outputs, jackknife masking, JIT
 recompilation). Read this before writing new code against the package.
 
-### 5. The AIC pipeline on the N-body mock — `example/SchwarMAX_Nbody_AIC*.ipynb`
+### 5. The AIC pipeline on the N-body mock — `SchwarMAX-Nbody/`
 
 The same mock as `example_schwarmax.ipynb`, modelled with `build_model_acc_meff_fourier` and the
 likelihood `logL = -0.5 (chi2_kin + 2 m_eff_kin + chi2_den) / S2`. The stellar mass is not sampled:
@@ -184,16 +187,17 @@ fraction of the model's own stellar mass that projects into the chosen region. 1
 
 | notebook | stellar disc | sampler | `L` = the light inside | outputs in `example/` |
 |---|---|---|---|---|
-| [`SchwarMAX_Nbody_AIC.ipynb`](example/SchwarMAX_Nbody_AIC.ipynb) | Miyamoto–Nagai | BlackJAX RMH | a 20 kpc sky box | `*_aic_tied.*` |
-| [`SchwarMAX_Nbody_AIC_expdisc.ipynb`](example/SchwarMAX_Nbody_AIC_expdisc.ipynb) | double exponential, CylSpline potential | emcee | a 20 kpc sky box | `*_aic_exp.*` |
-| [`SchwarMAX_Nbody_AIC_expdisc_field.ipynb`](example/SchwarMAX_Nbody_AIC_expdisc_field.ipynb) | double exponential, CylSpline potential | emcee | the IFU field (summed from the data) | `*_aic_exp_field.*` |
+| [`SchwarMAX_Nbody_AIC.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC.ipynb) | Miyamoto–Nagai | BlackJAX RMH | a 20 kpc sky box | `*_aic_tied.*` |
+| [`SchwarMAX_Nbody_AIC_expdisc.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC_expdisc.ipynb) | double exponential, CylSpline potential | emcee | a 20 kpc sky box | `*_aic_exp.*` |
+| [`SchwarMAX_Nbody_AIC_expdisc_field.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC_expdisc_field.ipynb) | double exponential, CylSpline potential | emcee | the IFU field (summed from the data) | `*_aic_exp_field.*` |
 
 **Running them.**
 - **On Colab:** upload the repository folder to `My Drive` as `SchwarMAX`, open a notebook on a GPU
   runtime and run the cells in order. Cell 2 finds the folder by itself (edit `DRIVE_FOLDER` if
   you used another name). It pins `jax[cuda12]==0.7.2` as a matched set and removes any other
   `jax-cuda*` plugin, because a stray plugin fails with `Unexpected PJRT_ExecuteOptions size`.
-- **Locally:** run the notebook from `example/`, and it finds the repository root one level up.
+- **Locally:** run the notebook from `SchwarMAX-Nbody/`, and it finds the repository root one
+  level up. Its data come from `example/`, and its outputs are written there too.
 - **Read cell 6 first.** It flips the mock's handedness, because every `*_acc` builder seeds the
   library anticlockwise and the mock was made for the clockwise `build_model`.
 
@@ -208,21 +212,23 @@ The cause is the tie. It fixes the model's light inside the box, an exponential 
 the IFU field. Tying the mass to the field light instead cuts the truth's logL deficit from 59 to
 10. The field-tied chain has not been run yet.
 
-### 6. Analysis scripts (in `example/`)
+### 6. Analysis scripts (in `SchwarMAX-Nbody/`)
 
 All of them `exec` the notebooks' own cells, so they cannot drift from the model the chain sampled.
 Pass `--help` for the options.
 
 | task | script |
 |---|---|
-| **Data vs model**: Σ, V, σ, h₃, h₄ maps, as model / data / residual, with χ² per channel. `--point bestfit` (the max-logP sample) or `--point truth`. Reads BlackJAX pickles or emcee `.h5` | [`example/plot_datavsmodel_aic.py`](example/plot_datavsmodel_aic.py) |
-| Corner plot against the truth, with pulls and split R-hat | [`example/plot_corner_aic.py`](example/plot_corner_aic.py) |
-| Recovered structure vs the N-body: Σ(R), M★(<R), A₂/A₀, v_c, M_DM(<r) | [`example/compare_structure_aic.py`](example/compare_structure_aic.py) (MN disc), [`example/compare_structure_aic_exp.py`](example/compare_structure_aic_exp.py) (exponential disc) |
-| The likelihood split by channel at the truth, the median and shape swaps (`--nb` picks the notebook; `--param-only` projects the parametric model without orbits) | [`example/diagnose_expdisc_bias.py`](example/diagnose_expdisc_bias.py) |
-| Smoke-test a notebook locally (600 orbits, CPU, ~4 GB) before spending GPU time | [`example/test_example_aic_expdisc_nb.py`](example/test_example_aic_expdisc_nb.py) |
-| Rebuild `L_BOX` (the light in the 20 kpc box) from the N-body | [`example/make_mock_box_light.py`](example/make_mock_box_light.py) |
-| Rebuild the `_GH` mock (V = v₀, σ = s, the pipeline's GH basis) | [`example/make_mock_gh_basis.py`](example/make_mock_gh_basis.py) |
-| Rebuild the exponential-disc ground truth (a direct fit of the family to the N-body) | [`example/fit_family_to_nbody.py`](example/fit_family_to_nbody.py) |
+| **Data vs model**: Σ, V, σ, h₃, h₄ maps, as model / data / residual, with χ² per channel. `--point bestfit` (the max-logP sample) or `--point truth`. Reads BlackJAX pickles or emcee `.h5` | [`SchwarMAX-Nbody/plot_datavsmodel_aic.py`](SchwarMAX-Nbody/plot_datavsmodel_aic.py) |
+| Corner plot against the truth, with pulls and split R-hat | [`SchwarMAX-Nbody/plot_corner_aic.py`](SchwarMAX-Nbody/plot_corner_aic.py) |
+| Recovered structure vs the N-body: Σ(R), M★(<R), A₂/A₀, v_c, M_DM(<r) | [`SchwarMAX-Nbody/compare_structure_aic.py`](SchwarMAX-Nbody/compare_structure_aic.py) (MN disc), [`SchwarMAX-Nbody/compare_structure_aic_exp.py`](SchwarMAX-Nbody/compare_structure_aic_exp.py) (exponential disc) |
+| The likelihood split by channel at the truth, the median and shape swaps (`--nb` picks the notebook; `--param-only` projects the parametric model without orbits) | [`SchwarMAX-Nbody/diagnose_expdisc_bias.py`](SchwarMAX-Nbody/diagnose_expdisc_bias.py) |
+| Smoke-test a notebook locally (600 orbits, CPU, ~4 GB) before spending GPU time | [`SchwarMAX-Nbody/test_example_aic_expdisc_nb.py`](SchwarMAX-Nbody/test_example_aic_expdisc_nb.py) |
+| **Regression gate**: run before any commit that touches the package ([rules](docs/DEVELOPMENT.md)) | [`SchwarMAX-Nbody/test_regression_projected.py`](SchwarMAX-Nbody/test_regression_projected.py) |
+| Rebuild the exponential-disc notebooks from the Miyamoto–Nagai one | [`SchwarMAX-Nbody/build_example_aic_expdisc_nb.py`](SchwarMAX-Nbody/build_example_aic_expdisc_nb.py), [`SchwarMAX-Nbody/build_example_aic_expdisc_field_nb.py`](SchwarMAX-Nbody/build_example_aic_expdisc_field_nb.py) |
+| Rebuild `L_BOX` (the light in the 20 kpc box) from the N-body | [`SchwarMAX-Nbody/make_mock_box_light.py`](SchwarMAX-Nbody/make_mock_box_light.py) |
+| Rebuild the `_GH` mock (V = v₀, σ = s, the pipeline's GH basis) | [`SchwarMAX-Nbody/make_mock_gh_basis.py`](SchwarMAX-Nbody/make_mock_gh_basis.py) |
+| Rebuild the exponential-disc ground truth (a direct fit of the family to the N-body) | [`SchwarMAX-Nbody/fit_family_to_nbody.py`](SchwarMAX-Nbody/fit_family_to_nbody.py) |
 
 For the v1 pipeline, data vs model is part 2 of
 [`example/example_analysis.ipynb`](example/example_analysis.ipynb). The structure, L_BOX and
