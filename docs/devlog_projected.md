@@ -287,3 +287,33 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
        PREV_TAG's.
   - The existing harness on the cheap notebook passes all six controls. The gate has a fourth entry
     with den3's pins and passes on all four notebooks (the cheap one matches den3 to 3e-7).
+
+## 2026-10-21 (from SchwarMAX-OmegaCen): shared package addition
+
+- **Added:** `integrates.integrate_adaptive_barred_chunked_dopri5` / `integrate_adaptive_batch_chunked_dopri5`
+  and their vmaps, plus the feature `'dopri5_dense'`.
+- **What they are:** Dormand–Prince 5(4) with 4th-order dense output, as drop-in counterparts of the BS2(3)
+  chunked integrator. The arguments are the same, plus `n_sub`.
+- **Effect on existing code:** no existing function changed, and the regression gate passed.
+- **Validation:** see docs/devlog_omegacen.md.
+
+### 2026-10-21 — audit: the cheap notebook is the same likelihood as den3 (and den3 = field except χ²_den)
+
+- **Text:** field → den3 changes two code lines (`ERR_DEN_LOGL` 0.01 → 0.03, `RUN_TAG`) and one
+  markdown paragraph. den3 → cheap changes cells 0 and 9–13 only; none of them is in the likelihood.
+  No notebook overrides `dict_data['XY_density_data_err']`, so the NNLS error is `utils.py:619`'s 1%.
+- **Numbers** (field, den3 and cheap each in its own process, the same θ, 600 orbits, serial,
+  at the truth and at logL_bar − 0.1):
+  - All 40 run_model arrays are bitwise identical in the three: orbit weights, Σ and h1–h4 maps,
+    the 3-D target and errors, the 3-D model, m_eff, the bootstrap χ².
+  - The NNLS 2-D error / data is 0.010000 in all 609 bins. The 3-D block has 630 constraints,
+    σ/A₀ = 0.0200 (m=0) and 0.0400 (m>0).
+  - χ²_den(1%) / χ²_den(3%) = 9.000000.
+  - logL rebuilt by hand matches `model_likelihood` to 1e-4: −174.5367 → −54.5298 at the truth.
+- **The one intended difference:** the start. The field minimiser's best was optimised on the 1%
+  surface. The field chain's first-step median puts it at L_bar ≈ 4.4, R_d ≈ 5.8, f_bar 0.43 (an
+  estimate: the minimiser files are on Drive). The prior box is centred on it, so the cheap den3
+  chain has exactly the field chain's prior box. ΔAIC (cell 15) uses only kinematic χ² and m_eff,
+  so it does not depend on ERR_DEN_LOGL.
+- **Fixed (cosmetic):** cell 9's markdown no longer refers to the scans or to chi2_report output.
+  The loader prints i_true / i_fit like the original minimiser cell.

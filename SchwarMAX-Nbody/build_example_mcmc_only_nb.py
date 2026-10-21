@@ -5,6 +5,7 @@ Input:  an exponential-disc AIC notebook (default the IFU-field, 3%-logL one)
 Output: <input>_mcmc_only.ipynb
 
 What is dropped, and what replaces it:
+  cell 9    (markdown) no longer refers to the scans or to chi2_report output
   cell 10   the truth is DEFINED but no longer evaluated (chi2_report + logL at the truth: one
             JIT compile and one model evaluation)
   cell 11   the three likelihood scans (27 evaluations)   -> a note
@@ -59,6 +60,17 @@ changes; it is the same likelihood, so the chain is written with the same `RUN_T
 
 ''' % (os.path.basename(A.base), TAG, A.prev_tag, A.prev_tag, A.prev_tag, A.prev_tag)) + CELLS[0][1]
 
+# ---------------------------------------------------------------- cell 9: no scans, no chi2_report here
+for old, new in (("# Example code for calling the likelihood function\n\nThe mock's generating parameters are known, "
+                  "so these scans have a right answer.",
+                  "# The ground truth\n\nThe mock's generating parameters are known. This cheap run only DEFINES them, "
+                  "for the minimiser table and the corner plot; the full notebook also evaluates the likelihood "
+                  "there and scans it."),
+                 ("`chi2_report` prints the derived\n$M_\\star$ and $p_{\\rm box}$",
+                  "The full notebook's `chi2_report` prints the derived\n$M_\\star$ and $p_{\\rm box}$")):
+    assert CELLS[9][1].count(old) == 1, 'cell 9 changed: %r' % old[:50]
+    CELLS[9][1] = CELLS[9][1].replace(old, new)
+
 # ---------------------------------------------------------------- cell 10: define, do not evaluate
 c10 = CELLS[10][1]
 CELLS[10][1] = c10[:c10.index('t0 = time.time()')].rstrip() + '''
@@ -96,7 +108,10 @@ print('loaded the minimiser ensemble of run %%r: %%d particles; best logL %%.4f 
 print('%%-26s %%11s %%11s %%11s' %% ('parameter', 'truth', 'best fit', 'offset'))
 for j, n in enumerate(param_names):
     t = float(np.asarray(theta_true)[j])
-    print('%%-26s %%11.4f %%11.4f %%+11.4f' %% (n, t, best[j], best[j] - t))''' % A.prev_tag
+    print('%%-26s %%11.4f %%11.4f %%+11.4f' %% (n, t, best[j], best[j] - t))
+_jb = param_names.index('beta')
+print('\\n   i_true = %%.2f deg | i_fit = %%.2f deg'
+      %% (np.degrees(float(np.asarray(theta_true)[_jb])), np.degrees(best[_jb])))''' % A.prev_tag
 
 # ================================================================= write + guards
 cells = []
