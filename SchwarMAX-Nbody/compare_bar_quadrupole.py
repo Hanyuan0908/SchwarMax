@@ -24,7 +24,47 @@ P.add_argument('--chain', default=os.path.join(ROOT, 'example', 'emcee_aic_exp_f
 P.add_argument('--nb', default=os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc_field.ipynb'))
 P.add_argument('--zmax', type=float, default=0.8, help='|z| cut for the in-plane streaming [kpc]')
 P.add_argument('--cap', type=float, default=15.0)
+P.add_argument('--plot-only', action='store_true',
+               help='no computation: draw figures/bar_quadrupole_compare.png from the saved npz')
 A = P.parse_args()
+NPZ = os.path.join(ROOT, 'example', 'bar_quadrupole_compare.npz')
+
+
+def plot(npz=NPZ):
+    import numpy as np
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    d = np.load(npz)
+    R = d['R']
+    sty = [('N-body', 'N-body', 'k', '-', 2.5), ('best_fit', 'best fit (L_bar 3.23 kpc)', 'tomato', '--', 2),
+           ('truth', 'truth (L_bar 4.87 kpc)', 'royalblue', '-', 1.8)]
+    fig, ax = plt.subplots(1, 3, figsize=(15, 4.4), constrained_layout=True)
+    for key, lab, c, ls, lw in sty:
+        ax[0].plot(R, d[key + '_Phi2'], color=c, ls=ls, lw=lw, label=lab)
+        ax[1].plot(R, d[key + '_V2'], color=c, ls=ls, lw=lw, label=lab)
+        ax[2].plot(R, np.where(d[key + '_V2'] >= 1.5, d[key + '_phV2'], np.nan),   # no phase without amplitude
+                   color=c, ls=ls, lw=lw, label=lab)
+    ax[0].set(xlabel='R [kpc]', ylabel=r'$|\Phi_2|$ [km$^2$ s$^{-2}$]', title='m=2 of the in-plane stellar potential')
+    ax[1].set(xlabel='R [kpc]', ylabel=r'$V_2$ [km/s]', title=r'm=2 of the face-on $\langle v_R \rangle$, $|z|<0.8$ kpc')
+    ax[2].set(xlabel='R [kpc]', ylabel='phase of $V_2$ [deg]', ylim=(-90, 90),
+              title='phase of $V_2$ vs the bar (+ = ahead)')
+    ax[2].axhline(0, color='0.6', lw=0.8)
+    for a in ax:
+        a.set_xlim(0, 8); a.grid(alpha=0.3)
+    ax[0].set_ylim(0, None); ax[1].set_ylim(0, None)
+    ax[0].legend(frameon=False)
+    fig.suptitle('Bar quadrupole: N-body vs the field-tied exponential-disc model (orbits from '
+                 'get_model_with_orbit_acc_fourier, 7500 orbits); phase hidden where V_2 < 1.5 km/s', fontsize=11)
+    os.makedirs(os.path.join(HERE, 'figures'), exist_ok=True)
+    out = os.path.join(HERE, 'figures', 'bar_quadrupole_compare.png')
+    fig.savefig(out, dpi=120)
+    print('wrote %s' % os.path.relpath(out, HERE))
+
+
+if A.plot_only:
+    plot()
+    sys.exit(0)
 
 
 def _rss():
@@ -203,6 +243,6 @@ for i, R in enumerate(R_C):
           % (R, out['N-body']['Phi2'][i], out['best fit']['Phi2'][i], out['truth']['Phi2'][i],
              out['N-body']['V2'][i], out['N-body']['phV2'][i], out['best fit']['V2'][i], out['best fit']['phV2'][i],
              out['truth']['V2'][i], out['truth']['phV2'][i]))
-np.savez(os.path.join(ROOT, 'example', 'bar_quadrupole_compare.npz'), R=R_C,
+np.savez(NPZ, R=R_C,
          **{'%s_%s' % (k.replace(' ', '_'), q): v for k, d in out.items() for q, v in d.items()})
 print('\npeak RSS %.1f GB' % _rss())
