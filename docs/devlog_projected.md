@@ -84,3 +84,38 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
   and A₂/A₀(R) at 0.02 jointly. A fit to the stellar v_c ALONE, with the same ties, gives
   L ≈ 3.25 kpc (2026-10-19 test). So the A₂/A₀ term is what lengthens the bar. The chains' 3.7 kpc
   sits between the potential-only and the A₂-matching answers.
+
+### 2026-10-21 — why the field chain prefers a short bar: logL and data-vs-model at fixed points
+
+- **Profile from the chain:** max logP per L_bar bin is nearly flat from 3.0 to 4.8 kpc (−78.4
+  to −79.2), −80.8 at 4.8–5.5. The 99th percentile is 5.1 kpc. L_bar is weakly constrained; 4.87
+  costs ~1.5–2.4 logP.
+- **BUG (mine), fixed:** `plot_datavsmodel_aic.py` scored `*_aic_exp_field*` chains with the
+  BOX-tied notebook (a different likelihood): its best fit came out 25 logL off. It now picks the
+  field notebook, records the notebook in its cache, and treats a cache made with another
+  notebook as stale. Also new: `--require NAME>=VALUE` (best fit within a range) and a full
+  channel χ² including the orbits' 3-D mismatch. `compare_dvm_points.py` splits Δχ² by channel
+  and deprojected radius.
+- **Evaluation-path noise:** at 600 orbits, logL at a fixed θ differs by ~10 between serial and
+  vmapped (batch 1/2/3) evaluation. It is not the NNLS: it is unchanged from 1000 to 3000
+  iterations. Likely chaotic orbits under float32 program differences. At the production 7500
+  orbits it is 0.1–0.7, within ~1 of the GPU chain. So compare points at 7500 orbits, never at 600.
+- **Points on the field likelihood** (7500 orbits, CPU; each within 1.0 of the chain's logP):
+  - A, best fit (L_bar 3.23): logL −69.05, 3-D mismatch 1813
+  - C, best with L_bar ≥ 4.7 (L_bar 4.72, R_d 8.4): −70.62, 3-D mismatch 3673
+  - D, truth (L_bar 4.87): −78.11, 3-D mismatch 7448
+  - C − A by radius: Δχ² +272, almost all at deprojected R 1–4 kpc, in the surface density
+    (+185) and h3 (+55); h1 improves (−27).
+- **The decisive scan,** A with ONLY L_bar changed:
+
+  | L_bar (kpc) | logL | χ²_den | 3-D mismatch | kinematics |
+  |---|---|---|---|---|
+  | 3.23 | −69.05 | 7676 | 1813 | |
+  | 4.0 | −69.57 | 7840 | 2900 | |
+  | 4.87 | −71.59 | 8067 | 4918 | flat (h1 −19, h2 +35, h3 +44, h4 −1) |
+
+  The penalty comes from the orbits failing to build the long T3 bar's own 3-D density, which
+  the NNLS pays for in the 2-D surface density. The ties are NOT shown to be the cause (the
+  claim is withdrawn).
+- **Next test:** can the library build a long bar at all? Fit the 3-D block alone at L_bar 3.23
+  vs 4.87, with more orbits or wider seeding.

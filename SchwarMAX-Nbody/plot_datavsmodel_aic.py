@@ -53,6 +53,10 @@ P.add_argument('--notebook', default=None,
 P.add_argument('--discard', type=int, default=None,
                help="default example_analysis's DISCARD_FIT = 700 for a BlackJAX pickle, the "
                     "emcee cell's 3 x max(tau) for an .h5 backend")
+P.add_argument('--require', action='append', default=[], metavar='NAME>=VALUE',
+               help="restrict --point bestfit to chain samples with NAME >= VALUE or NAME <= VALUE "
+                    "(sampled units, e.g. 'logL_bar>=0.672'): the best fit WITHIN that range, with "
+                    "every other parameter as the chain left it.  Repeatable; names the outputs.")
 P.add_argument('--point', default='bestfit', choices=('bestfit', 'truth'),
                help="bestfit: the max-logP sample after the discard; truth: the notebook's "
                     "cell-10 ground_truth with log10(lambda) = 0")
@@ -103,6 +107,20 @@ mark = lambda t: print('   [mem] %-28s peak RSS %5.2f GB' % (t, _rss_gb()), flus
 
 import numpy as np
 
+def NOTEBOOK_FOR_RUN():
+    """The notebook whose likelihood produced the chain.  The two exponential-disc notebooks tie the
+    stellar mass DIFFERENTLY (20 kpc box vs IFU field), so a field chain scored with the box
+    notebook is a different likelihood: 25 logL off at the best fit (found 2026-10-21)."""
+    if 'aic_exp_field' in RUN:
+        return os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc_field.ipynb')
+    if EXP:
+        return os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc.ipynb')
+    return NB_BY_NDIM[load_chain()[0].shape[-1]]
+
+
+PARAM_NAMES_FOR_REQ = {12: ['logM_10kpc', 'f_bar', 'logC_halo', 'logRd_disk', 'loghz_disk', 'logL_bar',
+                            'alpha', 'beta', 'gamma', 'log_mass_to_light_ratio', 'log_Omega',
+                            'log10_lambda']}
 NB_BY_NDIM = {12: os.path.join(HERE, 'SchwarMAX_Nbody_AIC.ipynb'),
               13: os.path.join(HERE, 'archive', 'SchwarMAX_Nbody_AIC_13param.ipynb')}
 
@@ -128,8 +146,13 @@ if _base.startswith('emcee_'):                         # emcee_<run>.h5 -- no re
 else:                                                  # mcmc_<results|checkpoint>_<run>.pkl
     RUN = _parts[2] if len(_parts) == 3 and _parts[0] == 'mcmc' else '_'.join(_parts)
 EXP = 'aic_exp' in RUN
-A.cache = A.cache or os.path.join(ROOT, 'example', 'datavsmodel_%s_%s.npz' % (A.point, RUN))
-A.tag = A.tag or '%s_%s' % (RUN, A.point)
+import re as _re
+_REQ = [_re.match(r'^(\w+)\s*(>=|<=)\s*([-+0-9.eE]+)$', r) for r in A.require]
+assert all(_REQ), 'bad --require (use NAME>=VALUE or NAME<=VALUE): %s' % A.require
+_REQ = [(m.group(1), m.group(2), float(m.group(3))) for m in _REQ]
+_REQTAG = ''.join('_%s%s%g' % (n, 'ge' if op == '>=' else 'le', v) for n, op, v in _REQ)
+A.cache = A.cache or os.path.join(ROOT, 'example', 'datavsmodel_%s%s_%s.npz' % (A.point, _REQTAG, RUN))
+A.tag = A.tag or '%s_%s%s' % (RUN, A.point, _REQTAG)
 
 
 def load_chain():
@@ -161,6 +184,15 @@ def stage_model():
     n_steps = S.shape[0]
     assert A.discard < n_steps, 'discard %d >= %d steps in %s' % (A.discard, n_steps, chain_label)
     flat, flat_lp = S[A.discard:].reshape(-1, S.shape[-1]), L[A.discard:].reshape(-1)
+    if _REQ:      # the best fit within a parameter range: names are checked against the notebook below
+        _pn = PARAM_NAMES_FOR_REQ[S.shape[-1]]
+        _ok = np.ones(len(flat_lp), bool)
+        for n, op, v in _REQ:
+            _col = flat[:, _pn.index(n)]
+            _ok &= (_col >= v) if op == '>=' else (_col <= v)
+        print('--require %s: %d of %d post-burn-in samples qualify' % (A.require, _ok.sum(), _ok.size))
+        assert _ok.any(), 'no chain sample satisfies --require'
+        flat_lp = np.where(_ok, flat_lp, -np.inf)
     ib = int(np.argmax(flat_lp))
     theta, lp_chain = flat[ib].astype(float), float(flat_lp[ib])
     print('chain %s: %d steps x %d chains x %d dims' % ((chain_label,) + S.shape))
@@ -184,8 +216,7 @@ path = %r + "/"
 ''' % (ROOT, ROOT)
     G = {'__name__': '__main__'}
     exec(compile(header, '<header>', 'exec'), G)
-    nb_file = A.notebook or (os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc.ipynb') if EXP
-                             else NB_BY_NDIM[S.shape[-1]])
+    nb_file = A.notebook or NOTEBOOK_FOR_RUN()
     print('   notebook %s' % os.path.relpath(nb_file, HERE))
     nb = json.load(open(nb_file))
     for i in (4, 6, 8):
@@ -248,12 +279,24 @@ path = %r + "/"
                                 / np.asarray(dd['h%d_data_err' % k])) ** 2)) for k in (1, 2, 3, 4))
              + (m_eff_kin,)))
     print('flux level data/model %.4f' % float(O.sum() / d0.sum()))
+    if _REQ:
+        assert list(G['param_names'])[:len(PARAM_NAMES_FOR_REQ[12])] == PARAM_NAMES_FOR_REQ[12], \
+            '--require assumed the 12-parameter names, and the notebook disagrees'
+    # every channel, plus the orbits' fit to the model's own 3-D density (NOT in logL)
+    chi2_h = [float(np.nansum(((np.asarray(res['h%d' % k])[0] - np.asarray(dd['h%d_data' % k]))
+                               / (np.asarray(dd['h%d_data_err' % k]) + G['EPSILON'])) ** 2)) for k in (1, 2, 3, 4)]
+    chi2_3d = float(np.sum(((np.asarray(res['density_3d_model'])[0] - np.asarray(res['density_3d']))
+                            / np.asarray(res['sig_Rzphi'])) ** 2))
+    print('chi2 by channel: den %.1f | h1 %.1f h2 %.1f h3 %.1f h4 %.1f | 2 m_eff %.1f || 3-D (not in logL) %.1f'
+          % ((chi2_den,) + tuple(chi2_h) + (2 * m_eff_kin, chi2_3d)))
 
     os.makedirs(os.path.dirname(A.cache), exist_ok=True)
     g = lambda k: np.asarray(dd[k])
     np.savez(A.cache,
              theta=theta, lp_chain=lp_chain, logL=logL, logprior=logprior,
              chi2_den=chi2_den, chi2_kin=chi2_kin, m_eff_kin=m_eff_kin, S2=G['S2'],
+             chi2_h=np.asarray(chi2_h), chi2_3d=chi2_3d, require=np.asarray(A.require, dtype=str),
+             notebook=os.path.basename(nb_file),
              n_orbit=G['N_ORBIT'], n_boot=nboot, discard=A.discard, n_steps=n_steps,
              chain_label=chain_label, flipped=bool(G['FLIP_HANDEDNESS']), mock=A.mock,
              point=A.point,
@@ -551,7 +594,9 @@ def stage_plot():
                      10 ** theta[pn.index('logL_bar')], theta[pn.index('f_bar')]))
     fig.suptitle('%s -- %s%s'
                  % ('GROUND TRUTH (cell 10)' if _pt == 'truth' else
-                    'BEST FIT (max logP after %d steps)' % int(C['discard']),
+                    'BEST FIT (max logP after %d steps%s)' % (int(C['discard']),
+                        ', within ' + ' & '.join(str(r) for r in C['require'])
+                        if 'require' in C.files and len(C['require']) else ''),
                     _shape,
                     r'logL %.2f  ($\chi^2_{\rm den}$ %.0f, $\chi^2_{\rm kin}$ %.0f, 2$m_{\rm eff}$ %.0f)'
                     % (float(C['logL']), float(C['chi2_den']), float(C['chi2_kin']),
@@ -573,8 +618,12 @@ def cache_is_stale():
     S, _, label = load_chain()
     mock = str(C['mock']) if 'mock' in C.files else 'mock_Nbody_galaxy_beta65_gamma45_D50.pkl'
     point = str(C['point']) if 'point' in C.files else 'bestfit'
+    req = [str(r) for r in C['require']] if 'require' in C.files else []
+    nbk = str(C['notebook']) if 'notebook' in C.files else None
+    want = os.path.basename(A.notebook or NOTEBOOK_FOR_RUN())
     stale = (str(C['chain_label']) != label or int(C['n_steps']) != S.shape[0]
-             or int(C['discard']) != A.discard or mock != A.mock or point != A.point)
+             or int(C['discard']) != A.discard or mock != A.mock or point != A.point
+             or req != list(A.require) or nbk != want)
     if stale:
         print('cache was built from %s (%d steps, discard %d, %s); now %s (%d steps, '
               'discard %d, %s) -> recomputing'

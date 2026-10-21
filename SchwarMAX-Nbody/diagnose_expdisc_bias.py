@@ -112,6 +112,13 @@ POINTS = {'T': T, 'M': M,
 # the exp-family fit to the N-body needs log M/L = +0.108 in the box at its own masses
 # (test_example_aic_expdisc_nb.py control 1): the truth's MASS, with the light still L_BOX
 POINTS['T+ML'][J['log_mass_to_light_ratio']] = 0.1079
+# the chain's best fit (max logP after burn-in), and the same point with ONLY L_bar changed
+_LP = _b.get_log_prob()[_burn:].reshape(-1)
+B = _S[_burn:].reshape(-1, len(names))[int(np.argmax(_LP))]
+POINTS['B'] = B.copy()
+for _Lk in (4.0, 4.87):
+    POINTS['B+L%g' % _Lk] = B.copy()
+    POINTS['B+L%g' % _Lk][J['logL_bar']] = np.log10(_Lk)
 
 
 # ---------------------------------------------------------------- one evaluation, all channels
