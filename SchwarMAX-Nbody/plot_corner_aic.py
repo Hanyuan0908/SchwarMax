@@ -66,10 +66,19 @@ assert ndim == 12, ('%d-D chain: only the 12-parameter layout has the real truth
 assert A.burnin < n_step, 'burn-in %d >= %d steps' % (A.burnin, n_step)
 
 # ---------------------------------------------------------------- names + truth, from the notebook
+def exp_notebook_for(name):
+    """emcee_aic_exp<suffix>.h5 (or *_aic_exp<suffix>.pkl) -> SchwarMAX_Nbody_AIC_expdisc<suffix>.ipynb.
+    Each exp notebook is a different LIKELIHOOD (box vs field tie, the logL density error), so a
+    chain must be scored with the notebook that produced it."""
+    base = re.sub(r'\.(h5|pkl)$', '', os.path.basename(name))
+    m = re.search(r'aic_exp(\w*)$', base)
+    assert m, 'not an exponential-disc chain: %s' % name
+    nbf = os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc%s.ipynb' % m.group(1))
+    assert os.path.isfile(nbf), 'no notebook %s for chain %s' % (os.path.basename(nbf), name)
+    return nbf
+
 FIELD = 'aic_exp_field' in os.path.basename(A.chain)
-nb = json.load(open(os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc_field.ipynb' if FIELD else
-                                 'SchwarMAX_Nbody_AIC_expdisc.ipynb' if EXP
-                                 else 'SchwarMAX_Nbody_AIC.ipynb')))
+nb = json.load(open(exp_notebook_for(A.chain) if EXP else os.path.join(HERE, 'SchwarMAX_Nbody_AIC.ipynb')))
 c8, c10 = (''.join(nb['cells'][i]['source']) for i in (8, 10))
 m = re.search(r"param_names = (\[.*?\])", c8, re.S)
 names = eval(m.group(1))

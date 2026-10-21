@@ -190,6 +190,7 @@ fraction of the model's own stellar mass that projects into the chosen region. 1
 | [`SchwarMAX_Nbody_AIC.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC.ipynb) | Miyamoto–Nagai | BlackJAX RMH | a 20 kpc sky box | `*_aic_tied.*` |
 | [`SchwarMAX_Nbody_AIC_expdisc.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC_expdisc.ipynb) | double exponential, CylSpline potential | emcee | a 20 kpc sky box | `*_aic_exp.*` |
 | [`SchwarMAX_Nbody_AIC_expdisc_field.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC_expdisc_field.ipynb) | double exponential, CylSpline potential | emcee | the IFU field (summed from the data) | `*_aic_exp_field.*` |
+| [`SchwarMAX_Nbody_AIC_expdisc_field_den3.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC_expdisc_field_den3.ipynb) | as above | emcee | the IFU field; surface density scored at **3% in logL** (still 1% in the NNLS) | `*_aic_exp_field_den3.*` |
 
 **Running them.**
 - **On Colab:** upload the repository folder to `My Drive` as `SchwarMAX`, open a notebook on a GPU

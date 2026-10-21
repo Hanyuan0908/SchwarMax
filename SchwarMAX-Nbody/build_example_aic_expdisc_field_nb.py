@@ -30,8 +30,15 @@ import argparse, json, os, re
 HERE = os.path.dirname(os.path.abspath(__file__))
 A = argparse.ArgumentParser()
 A.add_argument('--base', default=os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc.ipynb'))
-A.add_argument('--out', default=os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc_field.ipynb'))
+A.add_argument('--out', default=None, help='default SchwarMAX_Nbody_AIC_expdisc_field[_den<N>].ipynb')
+A.add_argument('--den-logl', dest='den_logl', type=float, default=0.01,
+               help="ERR_DEN_LOGL, the surface-density error in logL only (the NNLS keeps its 1%%). "
+                    "Anything but 0.01 builds a VARIANT with its own RUN_TAG, aic_exp_field_den<percent>, "
+                    "so a resumed run never continues a chain made with another likelihood.")
 A = A.parse_args()
+VARIANT = abs(A.den_logl - 0.01) > 1e-12
+TAG = 'aic_exp_field' + ('_den%g' % (100 * A.den_logl) if VARIANT else '')
+A.out = A.out or os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc_%s.ipynb' % TAG[len('aic_exp_'):])
 
 nb = json.load(open(A.base))
 CELLS = [[c['cell_type'], ''.join(c['source'])] for c in nb['cells']]
@@ -60,7 +67,7 @@ field is set by the shapes alone. The exponential disc over-fills 10–20 kpc, w
 truncated: at the truth's shapes only 68% of the box light falls in the field against the
 N-body's 83.5%, and the box-tied chain shrank $R_d$ and $L_{\\rm bar}$ to put the light back
 (`COLLAB_PROGRESS_LOG.md`, 2026-10-20(b)). Every file this notebook writes carries
-`RUN_TAG = 'aic_exp_field'`.
+`RUN_TAG = '__TAG__'`.
 
 ---
 
@@ -136,7 +143,26 @@ edit(8, '''    pair, that projects inside the sky box.  Angles in DEGREES, the c
      '''    pair, that projects inside the IFU field.  Angles in DEGREES, the convention of model.py:''')
 edit(8, '''    One sky column per lax.map step (~33k points), so it adds ~0.1 GB, not ~4 GB."""''',
      '''    One sky column per lax.map step (~25k points), so it adds ~0.1 GB, not ~3 GB."""''')
-edit(8, "RUN_TAG = 'aic_exp'", "RUN_TAG = 'aic_exp_field'")
+edit(8, "RUN_TAG = 'aic_exp'", "RUN_TAG = '%s'" % TAG)
+CELLS[0][1] = CELLS[0][1].replace('__TAG__', TAG)
+if VARIANT:
+    # the likelihood's surface-density error: logL only.  The NNLS still solves at 1% (utils.py:619),
+    # so the orbits keep reproducing the light; logL stops charging the parametric family's own
+    # density misfit (the orbit solutions miss the map by ~3.5% rms per bin) at 1%.
+    edit(8, "ERR_DEN_LOGL = 0.01       # <<< TUNE ME.  The mock carries 1%; NGC 1512 production uses 5%.",
+         "ERR_DEN_LOGL = %g       # <<< TUNE ME.  The NNLS still solves at 1%%; only logL is relaxed (see cell 0)."
+         % A.den_logl)
+    edit(0, '''Every file this notebook writes carries
+`RUN_TAG = '%s'`.''' % TAG,
+         '''Every file this notebook writes carries
+`RUN_TAG = '%s'`.
+
+**And one more change: the surface density is scored at %g%% in logL** (`ERR_DEN_LOGL`), while the
+NNLS still solves at 1%%. The orbits therefore still have to reproduce the light -- without that
+the kinematics lose their meaning -- but the likelihood no longer charges the parametric family's
+own density misfit at 1%%: the orbit solutions miss the map by ~3.5%% rms per bin, which no member
+of this family can beat. At 1%% that misfit, not the kinematics, picked the bar length
+(`docs/devlog_projected.md`, 2026-10-21).''' % (TAG, 100 * A.den_logl))
 edit(8, '''# Every file this notebook writes carries RUN_TAG, so neither the Miyamoto-Nagai chain
 # (*_aic_tied*) nor the 13-parameter one (*_aic*) is ever resumed into, or overwritten by, this one.''',
      '''# Every file this notebook writes carries RUN_TAG, so neither the box-normalised exponential-disc
@@ -176,7 +202,8 @@ for t, s in CELLS:
 out = {'cells': cells, 'metadata': nb.get('metadata', {}), 'nbformat': 4, 'nbformat_minor': 5}
 
 flat = '\n'.join(s for t, s in CELLS if t == 'code')
-assert "RUN_TAG = 'aic_exp_field'" in flat and "RUN_TAG = 'aic_exp'\n" not in flat
+assert ("RUN_TAG = '%s'" % TAG) in flat and "RUN_TAG = 'aic_exp'\n" not in flat
+assert ('ERR_DEN_LOGL = %g ' % A.den_logl) in flat
 assert 'BOX_HALF = 20.0' not in flat and '6.4078e10' not in flat, 'the 20 kpc box survived'
 assert "L_BOX = float(np.sum(np.asarray(dict_data['XY_density_data'])" in flat
 assert '_BWT = (_BYW[:, None] * _BSW[None, :]).ravel()' in flat

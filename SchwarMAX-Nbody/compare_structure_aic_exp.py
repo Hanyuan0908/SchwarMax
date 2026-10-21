@@ -17,7 +17,7 @@ the notebook's own acceleration callable, i.e. the force the orbits feel.  No or
 
     python compare_structure_aic_exp.py [--chain example/emcee_aic_exp.h5] [--burnin 3tau] [--nsamp 100]
 """
-import argparse, json, os, sys, threading, time
+import argparse, json, os, re, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
@@ -91,9 +91,19 @@ path = %r + "/"
 ''' % (ROOT, ROOT)
 G = {'__name__': '__main__'}
 exec(compile(HEADER, '<header>', 'exec'), G)
-if A.nb is None:      # the mass tie differs between the two exp notebooks, so this must match the chain
-    A.nb = os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc_field.ipynb'
-                        if 'aic_exp_field' in os.path.basename(A.chain) else 'SchwarMAX_Nbody_AIC_expdisc.ipynb')
+def exp_notebook_for(name):
+    """emcee_aic_exp<suffix>.h5 (or *_aic_exp<suffix>.pkl) -> SchwarMAX_Nbody_AIC_expdisc<suffix>.ipynb.
+    Each exp notebook is a different LIKELIHOOD (box vs field tie, the logL density error), so a
+    chain must be scored with the notebook that produced it."""
+    base = re.sub(r'\.(h5|pkl)$', '', os.path.basename(name))
+    m = re.search(r'aic_exp(\w*)$', base)
+    assert m, 'not an exponential-disc chain: %s' % name
+    nbf = os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc%s.ipynb' % m.group(1))
+    assert os.path.isfile(nbf), 'no notebook %s for chain %s' % (os.path.basename(nbf), name)
+    return nbf
+
+if A.nb is None:      # the exp notebooks are different likelihoods, so this must match the chain
+    A.nb = exp_notebook_for(A.chain)
 print('notebook (its stellar-mass tie derives the masses): %s' % os.path.basename(A.nb))
 nb = json.load(open(A.nb))
 for i in (4, 6, 8):

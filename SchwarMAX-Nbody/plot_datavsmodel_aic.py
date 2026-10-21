@@ -111,10 +111,10 @@ def NOTEBOOK_FOR_RUN():
     """The notebook whose likelihood produced the chain.  The two exponential-disc notebooks tie the
     stellar mass DIFFERENTLY (20 kpc box vs IFU field), so a field chain scored with the box
     notebook is a different likelihood: 25 logL off at the best fit (found 2026-10-21)."""
-    if 'aic_exp_field' in RUN:
-        return os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc_field.ipynb')
-    if EXP:
-        return os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc.ipynb')
+    if EXP:      # emcee_aic_exp<suffix> -> SchwarMAX_Nbody_AIC_expdisc<suffix>.ipynb (box, field, field_den3, ...)
+        nbf = os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc%s.ipynb' % RUN[len('aic_exp'):])
+        assert os.path.isfile(nbf), 'no notebook %s for run %s' % (os.path.basename(nbf), RUN)
+        return nbf
     return NB_BY_NDIM[load_chain()[0].shape[-1]]
 
 

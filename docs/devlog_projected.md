@@ -232,3 +232,30 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
   - N-body: broad lobes centred ~3 kpc from the centre, reaching ~5 kpc, ±20–25 km/s.
   - Best fit: the same pattern SHRUNK, lobes centred ~2 kpc, confined inside ~3.5 kpc, ±15–20 km/s.
   - Truth: lobes reach about the N-body's size but are narrower and elongated along the bar.
+
+### 2026-10-21 — the surface density at 3% in logL, 1% in the NNLS (user decision): `..._field_den3`
+
+- **Rationale (the user's):** the NNLS keeps solving at 1%, so the orbits must still reproduce the
+  light; if they don't, the kinematics lose their meaning. Only logL stops charging the parametric
+  family's own density misfit at 1%: the orbit solutions miss the map by ~3.5% rms per bin, which
+  no family member beats.
+- **New notebook** `SchwarMAX_Nbody_AIC_expdisc_field_den3.ipynb`, RUN_TAG `aic_exp_field_den3`,
+  built by `build_example_aic_expdisc_field_nb.py --den-logl 0.03`. It is a separate notebook so
+  the 1% chain stays reproducible and a resumed run cannot mix likelihoods. The default build still
+  reproduces the field notebook exactly.
+- The analysis scripts now map `emcee_aic_exp<suffix>` to `SchwarMAX_Nbody_AIC_expdisc<suffix>.ipynb`.
+- The gate gains a third entry (−57.335625 / −58.962715); the existing pins are unchanged.
+  Smoke test: all six controls pass.
+- **Predicted, exact** (the NNLS is unchanged, so only χ²_den's weight changes), from the 7500-orbit
+  channel χ²:
+
+  | point | logL at 1% | logL at 3% |
+  |---|---|---|
+  | best fit, L_bar 3.23 | −69.05 | −20.18 |
+  | same, L_bar 4.0 | −69.57 | −19.64 |
+  | same, L_bar 4.87 | −71.59 | −20.23 |
+  | best long-bar sample (L_bar 4.72) | −70.62 | −20.57 |
+  | truth (L_bar 4.87) | −78.11 | −21.86 |
+
+  The L_bar penalty all but vanishes, and 4.0 kpc is now marginally best. A chain must confirm it,
+  since the other parameters will move too.

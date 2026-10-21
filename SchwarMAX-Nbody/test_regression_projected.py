@@ -24,6 +24,8 @@ A = P.parse_args()
 PINNED = {
     'SchwarMAX_Nbody_AIC_expdisc.ipynb':       (-257.30835, -282.28104),
     'SchwarMAX_Nbody_AIC_expdisc_field.ipynb': (-180.9246, -190.58885),
+    # added 2026-10-21: the same likelihood with the surface density at 3% in logL (NNLS still 1%)
+    'SchwarMAX_Nbody_AIC_expdisc_field_den3.ipynb': (-57.335625, -58.962715),
 }
 
 failed = []
