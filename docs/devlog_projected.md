@@ -202,3 +202,28 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
   corotation).
 - **To test (no orbits):** a sky fit with γ_bar free (a flatter needle), and with a disc
   depleted across the bar.
+
+### 2026-10-21 — does the short bar act like the N-body bar? No (`compare_bar_quadrupole.py`)
+
+- **Measured** (user's question): the m=2 of the in-plane STELLAR potential |Φ₂|(R), and the m=2 of
+  the face-on ⟨v_R⟩ in |z| < 0.8 kpc. The model's streaming comes from its orbits:
+  get_model_with_orbit_acc_fourier at run_model's settings, points weighted by dt × NNLS weight.
+  All three systems rotate anticlockwise in the bar frame, and all V₂ phases are 45–50° behind
+  the bar.
+
+  | | best fit (L_bar 3.23) | truth (L_bar 4.87) |
+  |---|---|---|
+  | Φ₂ vs N-body | 1.3–1.4× at 1.25–2.25 kpc; 0.70, 0.56, 0.48, 0.41× at 3.75, 4.25, 4.75, 5.75 kpc | 1.3–1.5× at 1.75–3.75 kpc; matches beyond 5 kpc |
+  | V₂ | ~12 km/s at 1.75–2.75 kpc; 7.2, 2.6, 1.2 at 3.75, 4.25, 4.75 kpc | 12–13 km/s inside 3.75 kpc; 9.1, 6.0 at 4.25, 4.75 kpc |
+
+  The N-body's V₂ is 15–18 km/s from 1.25 to 4.25 kpc and 9.8 km/s at 4.75 kpc.
+- **Reading:**
+  - The gap ACROSS the N-body bar is itself m=2 density, and it gravitates, so the N-body's bar
+    potential extends further out.
+  - The short best-fit bar is not an equivalent redrawing: its Φ₂ is too concentrated, and its
+    orbits barely stream beyond 3.5 kpc.
+  - The truth model's Φ₂ reaches the right distance but is too strong inside 4 kpc, yet its
+    orbits stream LESS than the N-body there. The model orbits respond more weakly than the
+    N-body's stars even to a stronger bar.
+  - The LOS kinematics only weakly constrain the face-on v_R. The h1 χ² improved slightly with a
+    longer bar (−19 to −27).
