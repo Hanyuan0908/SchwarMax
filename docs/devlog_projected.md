@@ -153,3 +153,30 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
   - 3-D errors that don't give near-empty high-|z| cells 2%-of-themselves weight (e.g. relative to
     the ring's total A₀, or a lower |z| limit)
   - the model's own projection as the 2-D target, as Jin+2025 / FORSTAND do
+
+### 2026-10-21 — the bar the SKY MAP wants (no orbits): `fit_density_to_sky.py`
+
+- **Setup:** the field notebook's exp family, projected and normalised as the likelihood does, fitted
+  to the 609-bin map in log Σ at 1%. Angles fixed at the truth; b_bar = h_z and bulge = bar mass
+  kept. Both starts (chain best fit, truth) converge to the same minimum.
+- **Fits:**
+
+  | fit | L_bar | a_bar | R_d | h_z | f_bar | rms |
+  |---|---|---|---|---|---|---|
+  | a_bar = L/5 | 3.05 | 0.61 | 5.06 | 0.83 | 0.425 | 0.0759 dex |
+  | a_bar free | 2.93 | 0.91 | 5.15 | 0.79 | 0.422 | 0.0753 dex |
+
+  For reference: the chain's best fit gives 0.0835 dex, the truth (L_bar 4.87) 0.1003.
+- **Reading:**
+  - The sky map by itself wants L_bar ≈ 3 kpc, which is what the chain found (3.2–3.7). The short
+    bar is driven by the projected light, not by the orbits or the kinematics.
+  - Freeing a_bar barely helps, and makes the bar SHORTER and FATTER, not long and concentrated.
+    So the a_bar = L/5 tie is not the cause either.
+- **In 3-D against the N-body** (|z| < 2.45 kpc), the sky-fit bars:
+  - ring mass 0.81 at 1–2 kpc and 1.14 at 2.4–4.3 kpc
+  - |A₂|/A₀ peak 0.28–0.31 at 2.1 kpc, half by 3.6 kpc; the N-body peaks at 0.40 at 3.3 kpc and
+    is half by 5.1
+- **Interpretation (hypothesis):** the N-body's long m=2 carries little MASS at 4–5 kpc (an
+  elongated, low-density bar end), while a T3 bar can only make m=2 by putting mass there. The
+  family cannot produce the N-body's A₂/A₀ extent while matching its light, so "L_bar truth" is
+  ill-defined in this family.
