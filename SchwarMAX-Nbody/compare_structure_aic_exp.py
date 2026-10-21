@@ -29,6 +29,10 @@ P.add_argument('--nbody', default=os.path.join(ROOT, 'example',
                                                 'Bar_model_TG21', 'model', 't_t0_7'))
 P.add_argument('--mn', default=os.path.join(ROOT, 'example', 'structure_vs_nbody_checkpoint_aic_tied.npz'),
                help='compare_structure_aic.py output to overlay (the MN chain); skipped if missing')
+P.add_argument('--overlay', action='append', default=[], metavar='NPZ=LABEL',
+               help='another chain to overlay, from a saved structure_vs_nbody_*.npz (repeatable)')
+P.add_argument('--nb', default=None, help='the notebook whose stellar-mass tie the chain used; '
+               'default from the chain name: *_aic_exp_field* -> the IFU-field notebook')
 P.add_argument('--outdir', default=os.path.join(HERE, 'figures'))
 P.add_argument('--cap', type=float, default=6.0, help='abort if RSS exceeds this many GB')
 A = P.parse_args()
@@ -84,7 +88,11 @@ path = %r + "/"
 ''' % (ROOT, ROOT)
 G = {'__name__': '__main__'}
 exec(compile(HEADER, '<header>', 'exec'), G)
-nb = json.load(open(os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc.ipynb')))
+if A.nb is None:      # the mass tie differs between the two exp notebooks, so this must match the chain
+    A.nb = os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc_field.ipynb'
+                        if 'aic_exp_field' in os.path.basename(A.chain) else 'SchwarMAX_Nbody_AIC_expdisc.ipynb')
+print('notebook (its stellar-mass tie derives the masses): %s' % os.path.basename(A.nb))
+nb = json.load(open(A.nb))
 for i in (4, 6, 8):
     src = ''.join(nb['cells'][i]['source'])
     if i == 6:                                   # only the bin geometry is needed, not a library
@@ -219,12 +227,15 @@ for th in draws:
 band = {k: np.asarray(v) for k, v in band.items()}
 print('model side: %.0f s, peak RSS %.2f GB' % (time.time() - t0, _rss_gb()))
 
-MN = None
-if os.path.isfile(A.mn):
-    _m = np.load(A.mn)
+OV = []                                           # [(label, {Sig, Menc, A2A0, vc, vc_star})]
+for spec in ['%s=MN tied chain' % A.mn] + A.overlay:
+    _p, _lab = spec.split('=', 1)
+    if not os.path.isfile(_p):
+        continue
+    _m = np.load(_p)
     assert np.allclose(_m['EDGES'], EDGES) and np.allclose(_m['R_VC'], R_VC)
-    MN = {k: _m['median_' + k] for k in ('Sig', 'Menc', 'A2A0', 'vc', 'vc_star')}
-    print('MN chain median overlaid from %s' % os.path.relpath(A.mn, HERE))
+    OV.append((_lab, {k: _m['median_' + k] for k in ('Sig', 'Menc', 'A2A0', 'vc', 'vc_star')}))
+    print('overlaid: %s median, from %s' % (_lab, os.path.relpath(_p, HERE)))
 
 # ---------------------------------------------------------------- the N-body
 import agama
@@ -273,13 +284,14 @@ del w0
 
 # ---------------------------------------------------------------- numbers
 q = lambda a: np.percentile(a, [16, 50, 84], axis=0)
-print('\n%-26s %12s %12s %24s %10s' % ('', 'N-body', 'ground truth', 'recovered 16/50/84', 'MN median'))
+print('\n%-26s %12s %12s %24s' % ('', 'N-body', 'ground truth', 'recovered 16/50/84')
+      + ''.join(' %18s' % l[:18] for l, _ in OV))
 for Rx in (2.0, 3.0, 5.0, 7.3, 10.0, 20.0):
     f = lambda v: float(np.interp(Rx, EDGES[1:], v))
     lo, mi, hi = q([f(v) for v in band['Menc']])
-    print('M_*(<R=%4.1f kpc) [1e10]   %12.3f %12.3f %10.3f %6.3f %6.3f %10s'
-          % (Rx, f(nbody['Menc']) / 1e10, f(out['true']['Menc']) / 1e10, lo / 1e10, mi / 1e10, hi / 1e10,
-             '--' if MN is None else '%10.3f' % (f(MN['Menc']) / 1e10)))
+    print('M_*(<R=%4.1f kpc) [1e10]   %12.3f %12.3f %10.3f %6.3f %6.3f'
+          % (Rx, f(nbody['Menc']) / 1e10, f(out['true']['Menc']) / 1e10, lo / 1e10, mi / 1e10, hi / 1e10)
+          + ''.join(' %18.3f' % (f(o['Menc']) / 1e10) for _, o in OV))
 lo, mi, hi = q(band['Mstar'])
 print('M_* total [1e10]           %12.3f %12.3f %10.3f %6.3f %6.3f'
       % (nbody['Mstar'] / 1e10, out['true']['Mstar'] / 1e10, lo / 1e10, mi / 1e10, hi / 1e10))
@@ -287,11 +299,11 @@ print('\nlog10 Sigma_model / Sigma_N-body (face-on)')
 for Rx in (0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0, 15.0):
     j = int(np.argmin(np.abs(RC - Rx)))
     lo, mi, hi = q(np.log10(band['Sig'][:, j] / nbody['Sig'][j]))
-    print('   R = %5.2f kpc   truth %+6.3f   recovered %+6.3f [%+6.3f, %+6.3f]   MN %s'
-          % (RC[j], np.log10(out['true']['Sig'][j] / nbody['Sig'][j]), mi, lo, hi,
-             '--' if MN is None else '%+6.3f' % np.log10(MN['Sig'][j] / nbody['Sig'][j])))
+    print('   R = %5.2f kpc   truth %+6.3f   recovered %+6.3f [%+6.3f, %+6.3f]'
+          % (RC[j], np.log10(out['true']['Sig'][j] / nbody['Sig'][j]), mi, lo, hi)
+          + ''.join('   %s %+6.3f' % (l, np.log10(o['Sig'][j] / nbody['Sig'][j])) for l, o in OV))
 prof_list = [('N-body', nbody['A2A0']), ('ground truth', out['true']['A2A0']),
-             ('recovered median', out['median']['A2A0'])] + ([('MN median', MN['A2A0'])] if MN else [])
+             ('recovered median', out['median']['A2A0'])] + [(l + ' median', o['A2A0']) for l, o in OV]
 for lab, prof in prof_list:
     sel = RC < 10
     j = int(np.argmax(prof[sel]))
@@ -312,7 +324,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 R_FIELD, R_BOX = 7.27, 20.0                          # IFU major-axis half-width; sky box
-CN, CT, CR, CM = 'k', 'royalblue', 'tomato', 'seagreen'
+CN, CT, CR = 'k', 'royalblue', 'tomato'
+OV_STYLE = [('seagreen', '-.'), ('darkorange', (0, (5, 1.5))), ('purple', ':')]
 fig, ax = plt.subplots(2, 3, figsize=(16, 9.5), constrained_layout=True)
 
 
@@ -323,8 +336,8 @@ def bandplot(a, x, key, scale=1.0):
 
 
 def mnplot(a, x, key, scale=1.0):
-    if MN is not None:
-        a.plot(x, MN[key] * scale, color=CM, lw=1.5, ls='-.', label='MN tied chain median')
+    for (lab, o), (c, ls) in zip(OV, OV_STYLE):
+        a.plot(x, o[key] * scale, color=c, lw=1.5, ls=ls, label=lab + ' median')
 
 
 def marks(a):
@@ -397,20 +410,22 @@ a.plot(RC, np.log10(out['true']['Sig'] / nbody['Sig']), color=CT, lw=2, label='g
 lo, mi, hi = q(np.log10(band['Sig'] / nbody['Sig'][None, :]))
 a.fill_between(RC, lo, hi, color=CR, alpha=0.25, lw=0, label='recovered (exp) / N-body 16-84%')
 a.plot(RC, mi, color=CR, lw=2, ls='--')
-if MN is not None:
-    a.plot(RC, np.log10(MN['Sig'] / nbody['Sig']), color=CM, lw=1.5, ls='-.', label='MN tied chain median')
+for (lab, o), (c, ls) in zip(OV, OV_STYLE):
+    a.plot(RC, np.log10(o['Sig'] / nbody['Sig']), color=c, lw=1.5, ls=ls, label=lab + ' median')
 a.set(xscale='log', xlim=(0.1, 25), ylim=(-1.0, 1.0), xlabel='R [kpc]',
       ylabel=r'$\log_{10}\Sigma_{\rm model}/\Sigma_{\rm N\!-\!body}$', title='face-on surface-density ratio')
 a.legend(fontsize=8, frameon=False, loc='lower left')
 
-fig.suptitle('Exponential-disc chain vs the N-body -- %s, %d steps x %d walkers (burn-in %d, %d draws).  '
+TAG = os.path.basename(A.chain).replace('.h5', '').replace('emcee_', '')
+fig.suptitle(('Exponential-disc chain (IFU-field M/L tie)' if 'field' in TAG else 'Exponential-disc chain')
+             + ' vs the N-body -- %s, %d steps x %d walkers (burn-in %d, %d draws).  '
              'Grey: R < %.1f kpc (IFU major-axis half-width); dotted: the %.0f kpc sky box'
              % (os.path.basename(A.chain), S.shape[0], S.shape[1], A.burnin, len(draws), R_FIELD, R_BOX),
              fontsize=11)
 os.makedirs(A.outdir, exist_ok=True)
-outf = os.path.join(A.outdir, 'structure_vs_nbody_aic_exp_%dsteps.png' % S.shape[0])
+outf = os.path.join(A.outdir, 'structure_vs_nbody_%s_%dsteps.png' % (TAG, S.shape[0]))
 fig.savefig(outf, dpi=110)
-np.savez(os.path.join(ROOT, 'example', 'structure_vs_nbody_aic_exp.npz'),
+np.savez(os.path.join(ROOT, 'example', 'structure_vs_nbody_%s.npz' % TAG),
          RC=RC, EDGES=EDGES, R_VC=R_VC, R_ENC=R_ENC,
          **{'nbody_' + k: v for k, v in nbody.items()},
          **{'true_' + k: v for k, v in out['true'].items()},

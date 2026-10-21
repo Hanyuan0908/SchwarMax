@@ -63,7 +63,9 @@ assert ndim == 12, ('%d-D chain: only the 12-parameter layout has the real truth
 assert A.burnin < n_step, 'burn-in %d >= %d steps' % (A.burnin, n_step)
 
 # ---------------------------------------------------------------- names + truth, from the notebook
-nb = json.load(open(os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc.ipynb' if EXP
+FIELD = 'aic_exp_field' in os.path.basename(A.chain)
+nb = json.load(open(os.path.join(HERE, 'SchwarMAX_Nbody_AIC_expdisc_field.ipynb' if FIELD else
+                                 'SchwarMAX_Nbody_AIC_expdisc.ipynb' if EXP
                                  else 'SchwarMAX_Nbody_AIC.ipynb')))
 c8, c10 = (''.join(nb['cells'][i]['source']) for i in (8, 10))
 m = re.search(r"param_names = (\[.*?\])", c8, re.S)
@@ -131,7 +133,7 @@ fig = corner.corner(flat, labels=names, truths=truth, truth_color='tab:red', ran
                     quantiles=[0.16, 0.5, 0.84], show_titles=True, title_fmt='.3f',
                     title_kwargs={'fontsize': 8}, label_kwargs={'fontsize': 8})
 fig.suptitle('AIC pipeline, %sstellar mass tied to the light -- red = %s\n'
-             % ('exponential disc, ' if EXP else '',
+             % ('exponential disc, IFU-field M/L tie, ' if FIELD else 'exponential disc, ' if EXP else '',
                 'exp-family fit to the N-body (halo, angles, Omega, M/L: generating)' if EXP
                 else 'generating truth') +
              '%s: %d steps x %d chains, burn-in %d, acceptance %.2f'
