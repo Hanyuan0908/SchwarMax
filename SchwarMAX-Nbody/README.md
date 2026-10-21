@@ -79,8 +79,14 @@ stellar mass is tied to the light **inside the IFU field**, summed from the data
 20 kpc box. With the box, the model's light in the box is fixed whatever M/L is. The exponential
 over-fills 10–20 kpc where the N-body is truncated, so the truth's shapes put only 68% of the box
 light in the field against the N-body's 83.5%. The box-tied chain therefore shrank R_d to 3.9 kpc
-(truth 6.5) and L_bar to 3.7 kpc (truth 5.3). With the field tie, the truth's logL deficit drops
-from 59 to 10.
+(truth 6.5). With the field tie, the truth's logL deficit drops from 59 to 10, and the field-tied
+chain recovers R_d (8.3 kpc, on an R_d–f_bar ridge through the truth). L_bar stays at 3.7 kpc under
+both ties, against the truth's 4.87 kpc.
+
+**The L_bar truth is 4.87 kpc**, the published example's value, in all three notebooks. The
+exp-family fit that supplies the other exponential-disc truth values gave 5.34 kpc. L_bar is a
+parameter of the T3 model, so the family-independent check is the A₂/A₀ profile: half by 4.2 kpc
+for the field chain, 4.8 for the truth, 5.4 for the N-body.
 
 ## What the notebook does
 

@@ -8,6 +8,8 @@ A change that is MEANT to move these numbers must say so in its commit message a
 
 Pinned 2026-10-20 at commit 9e629d1: CPU, float32, jax 0.7.2, numpy 2.4.3, the test's defaults
 (600 orbits, n_realizations 2, n_boot_meff 3).  Three independent runs gave identical values.
+Re-pinned 2026-10-21: the exp notebooks' truth L_bar went from 5.343 to 4.87 kpc (the published
+example's), which moves the point the gate evaluates at; the package itself did not change.
 Takes ~1 min and ~4 GB per notebook.
 
     python test_regression_projected.py [--tol 0.01]
@@ -20,8 +22,8 @@ P.add_argument('--tol', type=float, default=0.01, help='absolute logL tolerance'
 A = P.parse_args()
 
 PINNED = {
-    'SchwarMAX_Nbody_AIC_expdisc.ipynb':       (-272.49628, -279.69803),
-    'SchwarMAX_Nbody_AIC_expdisc_field.ipynb': (-192.75204, -204.71582),
+    'SchwarMAX_Nbody_AIC_expdisc.ipynb':       (-257.30835, -282.28104),
+    'SchwarMAX_Nbody_AIC_expdisc_field.ipynb': (-180.9246, -190.58885),
 }
 
 failed = []

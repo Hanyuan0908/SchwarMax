@@ -417,6 +417,12 @@ least-squares fit of **this** family — double-exponential disc + T3 bar + V4 b
 `run_model`'s ties — to the N-body star particles: the stellar $v_c(R)$ at 1%, the face-on
 $\Sigma(R)$ at 0.05 dex and $A_2/A_0(R)$ at 0.02 (`fit_family_to_nbody.py`, family `exp_tied`).
 
+**One exception: $L_{\rm bar}$ is the published example's 4.87 kpc** (its cell 7, which the
+Miyamoto–Nagai notebook also uses), not the 5.34 kpc of this fit, so all three notebooks share one
+bar length. $L_{\rm bar}$ is a parameter of the T3 model, not a measured bar length. With this fit's
+other shapes, 4.87 kpc puts the $A_2/A_0$ peak (0.37) at 2.6 kpc, and it falls to half by 4.8 kpc.
+The N-body peaks at 0.40 at 3.3 kpc and falls to half by 5.4 kpc.
+
 $\log M/L=0$ is exact: the mock's surface density *is* the N-body's stellar mass. The shapes are a
 parametric description, and an imperfect one: no single smooth disc follows the N-body's disc,
 whose local scale length grows from 2.4 kpc (2–6 kpc) to 9.4 kpc (4–9 kpc). At these shapes the
@@ -426,6 +432,8 @@ stellar potential. `chi2_report` prints the derived $M_\star$ and $p_{\rm box}$.
 put(10, r'''# The disc and bar shapes and f_bar: a direct fit of THIS family (exponential disc + T3 bar +
 # V4 bulge, run_model's ties) to the N-body star particles -- v_c,*(R) 1%, face-on Sigma 0.05 dex,
 # A2/A0 0.02 (fit_family_to_nbody.py, family exp_tied).  Halo, angles, Omega, M/L: the mock's own.
+# EXCEPT L_bar: the published example's 4.87 kpc (example_schwarmax.ipynb cell 7), shared by all three
+# notebooks; this fit gave 5.343.  L_bar barely moves the derived masses (p_box, p_field change < 1e-3).
 _Md, _Mb = 5.37301e10, 1.60154e10    # disc; bar (= bulge)  ->  f_bar = 2 M_bar / M_star
 ground_truth = [
   10.76,                       # logM_10kpc
@@ -433,7 +441,7 @@ ground_truth = [
   np.log10(7.76),              # logC_halo
   np.log10(6.466),             # logRd_disk  [kpc]
   np.log10(0.7477),            # loghz_disk  [kpc]
-  np.log10(5.343),             # logL_bar    [kpc]
+  np.log10(4.87),              # logL_bar    [kpc]  (the published example's; this fit gave 5.343)
   np.radians(25.0),            # alpha
   np.radians(65.0),            # beta   (inclination)
   np.radians(45.0),            # gamma

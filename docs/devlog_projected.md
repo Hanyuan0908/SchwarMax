@@ -64,3 +64,23 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
 - That hybrid truth's A₂/A₀ peaks at 0.37 at 2.6 kpc and falls to half by 4.8 kpc. The genuine
   original truth (the MN cell-7 model) falls to half by 4.8 kpc too, with a peak of 0.42 at 2.9 kpc.
 - The chain: 0.37 / 2.3 / 4.2 kpc. The N-body: 0.40 / 3.3 / 5.4 kpc.
+
+### 2026-10-21 — the exp notebooks' truth L_bar is now 4.87 kpc (user decision)
+
+- Cell 10 of both exponential-disc notebooks now uses the published example's L_bar, 4.87 kpc,
+  shared with the Miyamoto–Nagai notebook. The exp-family fit's other values are kept. Changed in
+  `build_example_aic_expdisc_nb.py`, and both notebooks were rebuilt.
+  - Only cells 9–10 changed. Rebuilding also drops 42 KB of Colab widget state and Colab cell
+    metadata that the previously committed copies still carried.
+  - The derived masses barely move: p_box and p_field change by under 1e-3, so the direct fit's
+    M/L stays at +0.108 (box tie) and +0.016 (field tie).
+- **Regression gate re-pinned:** the truth is its evaluation point, and the package is unchanged.
+  - expdisc: −257.30835 / −282.28104 (was −272.49628 / −279.69803)
+  - field: −180.9246 / −190.58885 (was −192.75204 / −204.71582)
+  - logL at the truth itself rises by 15.2 (box tie) and 11.8 (field tie): the shorter-bar truth
+    fits the mock better.
+- **Where the 5.34 came from:** `fit_family_to_nbody.py` `exp_tied` uses run_model's ties
+  (a_bar = L/5, b_bar = h_z, V4 mass = M_bar) and fits v_c,*(R) at 1%, face-on Σ(R) at 0.05 dex
+  and A₂/A₀(R) at 0.02 jointly. A fit to the stellar v_c ALONE, with the same ties, gives
+  L ≈ 3.25 kpc (2026-10-19 test). So the A₂/A₀ term is what lengthens the bar. The chains' 3.7 kpc
+  sits between the potential-only and the A₂-matching answers.

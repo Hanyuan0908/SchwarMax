@@ -206,11 +206,13 @@ snooker move. Each group is padded to a whole `EMCEE_CHUNK`, so **`EMCEE_CHUNK` 
 `EMCEE_WALKERS / 4`**. 32 walkers with a chunk of 8 cost the same per step as 24 walkers.
 
 **What these runs showed.** Tied to the 20 kpc box, the exponential-disc chain recovers M/L, Ω,
-h_z and the viewing angles, but finds R_d ≈ 3.9 kpc against 6.5 and L_bar ≈ 3.7 kpc against 5.3.
-The cause is the tie. It fixes the model's light inside the box, an exponential over-fills
-10–20 kpc where the N-body is truncated, and so the truth's shapes put 19% too little light inside
-the IFU field. Tying the mass to the field light instead cuts the truth's logL deficit from 59 to
-10. The field-tied chain has not been run yet.
+h_z and the viewing angles, but finds R_d ≈ 3.9 kpc against 6.5. The cause is the tie. It fixes the
+model's light inside the box, an exponential over-fills 10–20 kpc where the N-body is truncated,
+and so the truth's shapes put 19% too little light inside the IFU field. Tied to the field light,
+the chain recovers M/L, Ω, the angles and the inner mass profile, and R_d (8.3 kpc, on an
+R_d–f_bar ridge that passes through the truth). L_bar stays at 3.7 kpc in both, against the truth's
+4.87 kpc: A₂/A₀ falls to half by 4.2 kpc, against 4.8 for the truth and 5.4 for the N-body.
+All three notebooks use the published example's L_bar = 4.87 kpc as the truth.
 
 ### 6. Analysis scripts (in `SchwarMAX-Nbody/`)
 
