@@ -55,3 +55,12 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
     be wrong.
   - The structure script gains `--overlay NPZ=LABEL` and names its outputs after the chain. Re-run
     on the box chain, it reproduces the previous numbers exactly.
+
+### 2026-10-21 — the field chain against the ORIGINAL L_bar truth (4.87 kpc)
+
+- `--truth-lbar KPC` in `plot_corner_aic.py` / `compare_structure_aic_exp.py` replaces only the truth's
+  L_bar; the outputs get a `_Ltruth<KPC>` suffix.
+- With 4.87 kpc (published cell 7) the L_bar pull is −1.8 (vs −2.4 against 5.34).
+- That hybrid truth's A₂/A₀ peaks at 0.37 at 2.6 kpc and falls to half by 4.8 kpc. The genuine
+  original truth (the MN cell-7 model) falls to half by 4.8 kpc too, with a peak of 0.42 at 2.9 kpc.
+- The chain: 0.37 / 2.3 / 4.2 kpc. The N-body: 0.40 / 3.3 / 5.4 kpc.

@@ -23,6 +23,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, ...) and example/ (mock data, N-body snapshot, run outputs)
 P = argparse.ArgumentParser()
 P.add_argument('--chain', default=os.path.join(ROOT, 'example', 'emcee_aic_exp.h5'))
+P.add_argument('--truth-lbar', dest='truth_lbar', type=float, default=None, metavar='KPC',
+               help="replace the truth's L_bar (e.g. 4.87, the published example's cell 7); every "
+                    "other truth value is kept, and the outputs get a _Ltruth<KPC> suffix")
 P.add_argument('--burnin', type=int, default=None, help="default: the emcee cell's 3 x max(tau)")
 P.add_argument('--nsamp', type=int, default=100, help='posterior draws for the bands')
 P.add_argument('--nbody', default=os.path.join(ROOT, 'example',
@@ -130,6 +133,10 @@ def unpack12(th):
 
 # cell 10: the exp-family fit to the N-body, at its OWN masses (box log M/L +0.108, not 0)
 GT = np.asarray(G['ground_truth'], float)
+if A.truth_lbar is not None:     # only L_bar: the masses and the other shapes stay the family fit's
+    GT[G['param_names'].index('logL_bar')] = np.log10(A.truth_lbar)
+TRUTH_LAB = ('ground truth (exp-family fit)' if A.truth_lbar is None else
+             'ground truth, L_bar set to %g kpc' % A.truth_lbar)
 PH_TRUE = _halo(GT[0], GT[2])
 PB_TRUE = _baryon(np.log10(G['_Md']), np.log10(G['_Mb']), 10 ** GT[3], 10 ** GT[4], 10 ** GT[5])
 
@@ -348,7 +355,7 @@ def marks(a):
 a = ax[0, 0]
 marks(a)
 a.plot(RC, nbody['Sig'], color=CN, lw=2.5, label='N-body')
-a.plot(RC, out['true']['Sig'], color=CT, lw=2, label='ground truth (exp-family fit)')
+a.plot(RC, out['true']['Sig'], color=CT, lw=2, label=TRUTH_LAB)
 a.plot(RC, out['true']['Sig_d'], color=CT, lw=1, ls='--', label='  disc / bar+bulge')
 a.plot(RC, out['true']['Sig_b'], color=CT, lw=1, ls=':')
 bandplot(a, RC, 'Sig')
@@ -417,15 +424,16 @@ a.set(xscale='log', xlim=(0.1, 25), ylim=(-1.0, 1.0), xlabel='R [kpc]',
 a.legend(fontsize=8, frameon=False, loc='lower left')
 
 TAG = os.path.basename(A.chain).replace('.h5', '').replace('emcee_', '')
+SUFFIX = '' if A.truth_lbar is None else '_Ltruth%g' % A.truth_lbar
 fig.suptitle(('Exponential-disc chain (IFU-field M/L tie)' if 'field' in TAG else 'Exponential-disc chain')
              + ' vs the N-body -- %s, %d steps x %d walkers (burn-in %d, %d draws).  '
              'Grey: R < %.1f kpc (IFU major-axis half-width); dotted: the %.0f kpc sky box'
              % (os.path.basename(A.chain), S.shape[0], S.shape[1], A.burnin, len(draws), R_FIELD, R_BOX),
              fontsize=11)
 os.makedirs(A.outdir, exist_ok=True)
-outf = os.path.join(A.outdir, 'structure_vs_nbody_%s_%dsteps.png' % (TAG, S.shape[0]))
+outf = os.path.join(A.outdir, 'structure_vs_nbody_%s_%dsteps%s.png' % (TAG, S.shape[0], SUFFIX))
 fig.savefig(outf, dpi=110)
-np.savez(os.path.join(ROOT, 'example', 'structure_vs_nbody_%s.npz' % TAG),
+np.savez(os.path.join(ROOT, 'example', 'structure_vs_nbody_%s%s.npz' % (TAG, SUFFIX)),
          RC=RC, EDGES=EDGES, R_VC=R_VC, R_ENC=R_ENC,
          **{'nbody_' + k: v for k, v in nbody.items()},
          **{'true_' + k: v for k, v in out['true'].items()},

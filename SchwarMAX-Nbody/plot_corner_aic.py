@@ -23,6 +23,9 @@ ROOT = os.path.dirname(HERE)   # the repository: the shared package (model.py, .
 P = argparse.ArgumentParser()
 P.add_argument('--chain', default=None,
                help='default example/mcmc_results_aic_tied.pkl, else mcmc_checkpoint_aic_tied.pkl')
+P.add_argument('--truth-lbar', dest='truth_lbar', type=float, default=None, metavar='KPC',
+               help="replace the truth's L_bar (e.g. 4.87, the published example's cell 7); every "
+                    "other truth value is kept, and the outputs get a _Ltruth<KPC> suffix")
 P.add_argument('--burnin', type=int, default=None,
                help="the notebook's BURNIN: 300 for a BlackJAX pickle, 3 tau for an emcee .h5")
 P.add_argument('--outdir', default=os.path.join(HERE, 'figures'))
@@ -75,6 +78,9 @@ assert ('logRd_disk' in names) == EXP, 'the chain name and the notebook disagree
 g = {'np': np}
 exec(truth_src, g)
 truth = list(g['ground_truth']) + [None]             # log10(lambda) has no truth
+if A.truth_lbar is not None:
+    truth[names.index('logL_bar')] = float(np.log10(A.truth_lbar))
+    print('truth L_bar replaced by %.3g kpc (log %.4f); every other truth value kept' % (A.truth_lbar, truth[names.index('logL_bar')]))
 J_LAM = names.index('log10_lambda')
 assert len(names) == ndim and len(truth) == ndim and truth[J_LAM] is None
 
@@ -134,12 +140,13 @@ fig = corner.corner(flat, labels=names, truths=truth, truth_color='tab:red', ran
                     title_kwargs={'fontsize': 8}, label_kwargs={'fontsize': 8})
 fig.suptitle('AIC pipeline, %sstellar mass tied to the light -- red = %s\n'
              % ('exponential disc, IFU-field M/L tie, ' if FIELD else 'exponential disc, ' if EXP else '',
-                'exp-family fit to the N-body (halo, angles, Omega, M/L: generating)' if EXP
+                ('exp-family fit to the N-body (halo, angles, Omega, M/L: generating)'
+                 + ('; L_bar truth set to %g kpc' % A.truth_lbar if A.truth_lbar is not None else '')) if EXP
                 else 'generating truth') +
              '%s: %d steps x %d chains, burn-in %d, acceptance %.2f'
              % (os.path.basename(A.chain), n_step, n_chain, A.burnin, acc), fontsize=13)
 os.makedirs(A.outdir, exist_ok=True)
 tag = re.sub(r'\.(pkl|h5)$', '', os.path.basename(A.chain)).replace('mcmc_', '').replace('emcee_', '')
-out = os.path.join(A.outdir, 'corner_%s_%dsteps.png' % (tag, n_step))
+out = os.path.join(A.outdir, 'corner_%s_%dsteps%s.png' % (tag, n_step, '' if A.truth_lbar is None else '_Ltruth%g' % A.truth_lbar))
 fig.savefig(out, dpi=110, bbox_inches='tight')
 print('\nwrote %s' % os.path.relpath(out, HERE))
