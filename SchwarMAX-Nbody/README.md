@@ -28,10 +28,13 @@ SchwarMAX_Nbody_AIC.ipynb                 Miyamoto-Nagai disc, BlackJAX; mass ti
 SchwarMAX_Nbody_AIC_expdisc.ipynb         double-exponential disc (CylSpline), emcee; 20 kpc box tie  -> *_aic_exp.*
 SchwarMAX_Nbody_AIC_expdisc_field.ipynb   as above, with the mass tied to the IFU-field light        -> *_aic_exp_field.*
 SchwarMAX_Nbody_AIC_expdisc_field_den3.ipynb   the field notebook, surface density at 3% in logL (1% in the NNLS) -> *_aic_exp_field_den3.*
+SchwarMAX_Nbody_AIC_expdisc_field_den3_mcmc_only.ipynb   den3 without scans or minimiser: loads PREV_TAG's minimiser ensemble -> *_aic_exp_field_den3.*
 build_example_aic_expdisc_nb.py           builds the expdisc notebook FROM the Miyamoto-Nagai one
 build_example_aic_expdisc_field_nb.py     builds the field notebook FROM the expdisc one (--den-logl 0.03: the den3 variant)
+build_example_mcmc_only_nb.py             builds the cheap dAIC + MCMC copy of a notebook (--base, --prev-tag)
 test_example_aic_expdisc_nb.py            runs a notebook's cells locally (600 orbits) + an emcee/RESUME check
-test_regression_projected.py              the REGRESSION GATE: pinned likelihood values, both exp notebooks
+test_example_mcmc_only_nb.py              the cheap notebook's loader (cell 13), dAIC (15) and chain start (17)
+test_regression_projected.py              the REGRESSION GATE: pinned likelihood values, every exp notebook
 plot_datavsmodel_aic.py                   data vs model maps at the best fit or the truth
 plot_corner_aic.py                        corner + pulls + R-hat against the truth
 compare_structure_aic.py, *_exp.py        recovered Sigma(R), M(<R), A2/A0, v_c, M_DM vs the N-body

@@ -259,3 +259,31 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
 
   The L_bar penalty all but vanishes, and 4.0 kpc is now marginally best. A chain must confirm it,
   since the other parameters will move too.
+
+## 2026-10-21 — A cheap notebook: the ΔAIC calibration and the MCMC only
+
+- **Asked for:** a notebook that keeps only the ΔAIC calibration and the chain, starting from the
+  previous minimisation's best fit.
+- `SchwarMAX_Nbody_AIC_expdisc_field_den3_mcmc_only.ipynb`, built by
+  `build_example_mcmc_only_nb.py` from the den3 notebook. 14 of its 19 cells are den3's, byte for
+  byte, so the likelihood, the dAIC cell, emcee, the corner and `RUN_TAG = 'aic_exp_field_den3'` are
+  unchanged. Changed:
+  - cell 0: a header;
+  - cell 10: defines the truth, but no longer evaluates it;
+  - cell 11: the 27-evaluation scans become a note;
+  - cells 12–13: the minimiser (968 evaluations) becomes a loader.
+- **The loader** reads `minimiser_pos/val/minimisation_result_<PREV_TAG>.npy`, with
+  `PREV_TAG = 'aic_exp_field'` (the 1% field run). It stops with a message if they are missing,
+  checks NDIM, and checks that the result is the ensemble's argmax. Those `val` were computed
+  under the **1%** likelihood. They only choose `best` and set the spread, which is all that
+  cell 15 (step sizes) and cell 17 (the start ball and the prior box) use.
+- The chain keeps den3's tag, so the analysis scripts map it to the full den3 notebook (the same
+  likelihood). With `RESUME = True` it would continue a den3 chain already on Drive.
+- **Tests:**
+  - `test_example_mcmc_only_nb.py`:
+    1. cell 13 stops without the files and loads the argmax with them;
+    2. cell 15 runs on the loaded best (600 orbits, 3 realisations, 28 s, 2.4 GB);
+    3. cell 17 centres its ball on the loaded best and writes `emcee_aic_exp_field_den3.h5`, not
+       PREV_TAG's.
+  - The existing harness on the cheap notebook passes all six controls. The gate has a fourth entry
+    with den3's pins and passes on all four notebooks (the cheap one matches den3 to 3e-7).

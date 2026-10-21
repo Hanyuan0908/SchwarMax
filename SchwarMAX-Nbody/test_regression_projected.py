@@ -26,6 +26,8 @@ PINNED = {
     'SchwarMAX_Nbody_AIC_expdisc_field.ipynb': (-180.9246, -190.58885),
     # added 2026-10-21: the same likelihood with the surface density at 3% in logL (NNLS still 1%)
     'SchwarMAX_Nbody_AIC_expdisc_field_den3.ipynb': (-57.335625, -58.962715),
+    # added 2026-10-21: the cheap (dAIC + MCMC only) copy of den3 -- it must stay the SAME likelihood
+    'SchwarMAX_Nbody_AIC_expdisc_field_den3_mcmc_only.ipynb': (-57.335625, -58.962715),
 }
 
 failed = []

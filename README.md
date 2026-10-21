@@ -191,6 +191,7 @@ fraction of the model's own stellar mass that projects into the chosen region. 1
 | [`SchwarMAX_Nbody_AIC_expdisc.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC_expdisc.ipynb) | double exponential, CylSpline potential | emcee | a 20 kpc sky box | `*_aic_exp.*` |
 | [`SchwarMAX_Nbody_AIC_expdisc_field.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC_expdisc_field.ipynb) | double exponential, CylSpline potential | emcee | the IFU field (summed from the data) | `*_aic_exp_field.*` |
 | [`SchwarMAX_Nbody_AIC_expdisc_field_den3.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC_expdisc_field_den3.ipynb) | as above | emcee | the IFU field; surface density scored at **3% in logL** (still 1% in the NNLS) | `*_aic_exp_field_den3.*` |
+| [`SchwarMAX_Nbody_AIC_expdisc_field_den3_mcmc_only.ipynb`](SchwarMAX-Nbody/SchwarMAX_Nbody_AIC_expdisc_field_den3_mcmc_only.ipynb) | as above | emcee | **the cheap copy of den3**: no scans, no minimiser. It loads an earlier run's minimiser ensemble (`PREV_TAG`, default `aic_exp_field`) and runs only the ΔAIC calibration and the chain | `*_aic_exp_field_den3.*` (the same likelihood) |
 
 **Running them.**
 - **On Colab:** upload the repository folder to `My Drive` as `SchwarMAX`, open a notebook on a GPU
@@ -226,9 +227,9 @@ Pass `--help` for the options.
 | Corner plot against the truth, with pulls and split R-hat | [`SchwarMAX-Nbody/plot_corner_aic.py`](SchwarMAX-Nbody/plot_corner_aic.py) |
 | Recovered structure vs the N-body: Σ(R), M★(<R), A₂/A₀, v_c, M_DM(<r) | [`SchwarMAX-Nbody/compare_structure_aic.py`](SchwarMAX-Nbody/compare_structure_aic.py) (MN disc), [`SchwarMAX-Nbody/compare_structure_aic_exp.py`](SchwarMAX-Nbody/compare_structure_aic_exp.py) (exponential disc) |
 | The likelihood split by channel at the truth, the median and shape swaps (`--nb` picks the notebook; `--param-only` projects the parametric model without orbits) | [`SchwarMAX-Nbody/diagnose_expdisc_bias.py`](SchwarMAX-Nbody/diagnose_expdisc_bias.py) |
-| Smoke-test a notebook locally (600 orbits, CPU, ~4 GB) before spending GPU time | [`SchwarMAX-Nbody/test_example_aic_expdisc_nb.py`](SchwarMAX-Nbody/test_example_aic_expdisc_nb.py) |
+| Smoke-test a notebook locally (600 orbits, CPU, ~4 GB) before spending GPU time | [`SchwarMAX-Nbody/test_example_aic_expdisc_nb.py`](SchwarMAX-Nbody/test_example_aic_expdisc_nb.py); for the `_mcmc_only` notebook's loader, ΔAIC and chain start also [`SchwarMAX-Nbody/test_example_mcmc_only_nb.py`](SchwarMAX-Nbody/test_example_mcmc_only_nb.py) |
 | **Regression gate**: run before any commit that touches the package ([rules](docs/DEVELOPMENT.md)) | [`SchwarMAX-Nbody/test_regression_projected.py`](SchwarMAX-Nbody/test_regression_projected.py) |
-| Rebuild the exponential-disc notebooks from the Miyamoto–Nagai one | [`SchwarMAX-Nbody/build_example_aic_expdisc_nb.py`](SchwarMAX-Nbody/build_example_aic_expdisc_nb.py), [`SchwarMAX-Nbody/build_example_aic_expdisc_field_nb.py`](SchwarMAX-Nbody/build_example_aic_expdisc_field_nb.py) |
+| Rebuild the exponential-disc notebooks from the Miyamoto–Nagai one | [`SchwarMAX-Nbody/build_example_aic_expdisc_nb.py`](SchwarMAX-Nbody/build_example_aic_expdisc_nb.py), [`SchwarMAX-Nbody/build_example_aic_expdisc_field_nb.py`](SchwarMAX-Nbody/build_example_aic_expdisc_field_nb.py); the cheap ΔAIC + MCMC copy: [`SchwarMAX-Nbody/build_example_mcmc_only_nb.py`](SchwarMAX-Nbody/build_example_mcmc_only_nb.py) |
 | Rebuild `L_BOX` (the light in the 20 kpc box) from the N-body | [`SchwarMAX-Nbody/make_mock_box_light.py`](SchwarMAX-Nbody/make_mock_box_light.py) |
 | Rebuild the `_GH` mock (V = v₀, σ = s, the pipeline's GH basis) | [`SchwarMAX-Nbody/make_mock_gh_basis.py`](SchwarMAX-Nbody/make_mock_gh_basis.py) |
 | Rebuild the exponential-disc ground truth (a direct fit of the family to the N-body) | [`SchwarMAX-Nbody/fit_family_to_nbody.py`](SchwarMAX-Nbody/fit_family_to_nbody.py) |
