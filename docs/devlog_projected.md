@@ -180,3 +180,25 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
   elongated, low-density bar end), while a T3 bar can only make m=2 by putting mass there. The
   family cannot produce the N-body's A₂/A₀ extent while matching its light, so "L_bar truth" is
   ill-defined in this family.
+
+### 2026-10-21 — CORRECTION: why the sky map prefers a short bar
+
+- The previous entry's "the N-body's long m=2 carries little mass" was wrong; the user rightly
+  rejected it. Measured in the plane (|z| < 0.8 kpc) from the Fourier coefficients, with
+  ρ(φ) ∝ A₀ + 2Σ c_m cos mφ: along the bar (φ=0) vs across it (φ=90°).
+  - **N-body:** along the bar the density is nearly FLAT from 2.4 to 5 kpc (2.7–3.2e9 per ring
+    unit). Across it there is a DEEP gap: along/across = 4.2, 4.7, 3.7 at 2.35–4.31 kpc.
+  - **Truth model (L_bar 4.87):** along 1.8–2.1× the N-body at 2.4–4.3 kpc, across 1.2–1.6×,
+    ring mass 1.5–1.8×.
+  - **Sky-fit model (L_bar 3.05):** along 0.6–0.9× beyond 2.9 kpc, across 1.4–2.0×, ring mass
+    1.0–1.3×.
+- **Reading:**
+  - The N-body's m=2 comes largely from a DEFICIT across the bar. The exponential disc is
+    axisymmetric and fills that gap.
+  - A T3 bar can only build the contrast by ADDING mass along the bar, which overshoots the ring's
+    light by 1.5–1.8×.
+  - The sky map rejects that and settles for a short bar.
+- **Matches Dattathri+2024's R_hole term** (a disc depleted perpendicular to the bar, inside
+  corotation).
+- **To test (no orbits):** a sky fit with γ_bar free (a flatter needle), and with a disc
+  depleted across the bar.
