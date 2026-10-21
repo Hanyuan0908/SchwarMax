@@ -119,3 +119,37 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
   claim is withdrawn).
 - **Next test:** can the library build a long bar at all? Fit the 3-D block alone at L_bar 3.23
   vs 4.87, with more orbits or wider seeding.
+
+### 2026-10-21 — the 2-D vs 3-D density conflict is in A₀, at high |z| (user's hypothesis, confirmed)
+
+- **Settings (field notebook):**
+  - 2-D: the OBSERVED map in 609 bins, 1% in both the NNLS (`utils.py:619`) and logL; no m_eff
+    charge.
+  - 3-D: the PARAMETRIC density in 15 R rings (0–10 kpc, uniform in √R) × 6 |z| layers
+    (0–5 kpc, uniform in √|z|) × 7 modes (A₀, c/s of m = 2, 4, 6) = 630 constraints.
+    σ(A₀) = 2% A₀, σ(c_m, s_m) = 4% A₀ (scheme 'a0'; the 6% floor is unused).
+- **New `compare_target_vs_nbody.py`** bins the N-body stars into the same cells with the package's
+  binner and scores the target with the likelihood's errors. No orbits.
+- **Result at the chain's best fit** (L_bar 3.23):
+  - target vs N-body: χ² A₀ 64,312; m=2 742, m=4 224, m=6 54. The mismatch is the ring MASS,
+    not the bar harmonics.
+  - Cylindrical M(<R) agrees to 0.5–3% beyond 1 kpc.
+  - 86% of the A₀ χ² is at |z| > 2.45 kpc. There the model holds 1.5e9 M☉ (2.7% of its box
+    mass) against the N-body's 2.9e8 (0.5%): 4× at 2.45–3.6 kpc, 29× at 3.6–5 kpc. Two-thirds
+    comes from the exponential disc's vertical tail, one-third from the T3 bar (b_bar = h_z tie);
+    the V4 bulge adds ~nothing. The N-body's vertical profile drops ~10× per layer above 1.5 kpc,
+    much steeper than exponential.
+- **Longer bar** (L_bar 4.87, the rest fixed): A₀ χ² rises to 70,886, in-plane.
+  - Ring mass at 0.65–1.83 kpc falls to 0.66–0.82 of the N-body's, and rises to 1.26–1.48 at
+    2.35–5.1 kpc.
+  - So the long T3 bar puts its mass too far out. That is the link between L_bar and the conflict.
+  - The truth (L_bar 4.87, R_d 6.47) shows the same: 71k, rings 0.64–1.47.
+- **On the sky:** the parametric projection misses the map by 0.085 dex rms, split as 0.055 dex
+  axisymmetric (+5% at R<1, −6 to −7% at 1–2.5 kpc, +12% at 10–13, +34% beyond, i.e. the field
+  corners) and 0.065 dex non-axisymmetric.
+- **Options (not yet tested):**
+  - a vertical profile that falls faster (sech² or Gaussian)
+  - b_bar decoupled from h_z
+  - 3-D errors that don't give near-empty high-|z| cells 2%-of-themselves weight (e.g. relative to
+    the ring's total A₀, or a lower |z| limit)
+  - the model's own projection as the 2-D target, as Jin+2025 / FORSTAND do
