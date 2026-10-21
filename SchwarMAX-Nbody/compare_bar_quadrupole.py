@@ -62,8 +62,39 @@ def plot(npz=NPZ):
     print('wrote %s' % os.path.relpath(out, HERE))
 
 
+def plot_maps(npz=NPZ):
+    import numpy as np
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    d = np.load(npz)
+    ed = d['XY_ED']
+    cen = 0.5 * (ed[1:] + ed[:-1])
+    panels = [('N-body', 'N-body snapshot (t_t0_7)', 20), ('best_fit', 'Schwarzschild best fit (L_bar 3.23 kpc)', 5),
+              ('truth', 'Schwarzschild at the truth (L_bar 4.87 kpc)', 5)]
+    vmax = np.nanpercentile(np.abs(d['N-body_vRmap'][d['N-body_Nmap'] >= 20]), 98)
+    fig, ax = plt.subplots(1, 3, figsize=(17, 5.6), constrained_layout=True)
+    for a, (key, title, nmin) in zip(ax, panels):
+        V = np.where(d[key + '_Nmap'] >= nmin, d[key + '_vRmap'], np.nan)
+        im = a.pcolormesh(ed, ed, V.T, cmap='RdBu_r', vmin=-vmax, vmax=vmax, shading='flat')
+        W = d[key + '_Wmap']
+        lg = np.log10(np.where(W > 0, W / W.max(), np.nan))
+        a.contour(cen, cen, lg.T, levels=np.linspace(-3.0, -0.25, 7), colors='k', linewidths=0.6, alpha=0.6)
+        a.set(xlim=(-8, 8), ylim=(-8, 8), aspect='equal', xlabel='x [kpc] (bar axis)', title=title)
+        a.set_ylabel('y [kpc]')
+    cb = fig.colorbar(im, ax=ax, shrink=0.9)
+    cb.set_label(r'$\langle v_R \rangle$ [km/s], $|z| < 0.8$ kpc')
+    fig.suptitle('Face-on mean radial velocity in the bar frame (rotation anticlockwise). Contours: face-on '
+                 'surface density, 0.45 dex apart. Pixels reached by fewer than %d particles / %d orbits are blank.'
+                 % (panels[0][2], panels[1][2]), fontsize=10.5)
+    out = os.path.join(HERE, 'figures', 'vR_faceon_maps.png')
+    fig.savefig(out, dpi=120)
+    print('wrote %s' % os.path.relpath(out, HERE))
+
+
 if A.plot_only:
     plot()
+    plot_maps()
     sys.exit(0)
 
 
@@ -125,6 +156,25 @@ def m2(vals_phi):
     return np.hypot(c, s), 0.5 * np.degrees(np.arctan2(s, c))
 
 
+XY_ED = np.linspace(-8.0, 8.0, 65)                  # face-on map: 0.25 kpc pixels, bar along x
+
+
+def vr_map(x, y, z, vx, vy, w, point_symmetric=False):
+    """Face-on in-plane maps: weighted <v_R> and the weight (mass) per pixel.  point_symmetric adds
+    each point's (-x,-y) image, which carries the same v_R -- the model's orbits are stored as the
+    identity image of a library that the fit symmetrises."""
+    sel = np.abs(z) < A.zmax
+    x, y, w = x[sel], y[sel], w[sel]
+    vR = (x * vx[sel] + y * vy[sel]) / np.maximum(np.hypot(x, y), 1e-9)
+    W, _, _ = np.histogram2d(x, y, bins=[XY_ED, XY_ED], weights=w)
+    V, _, _ = np.histogram2d(x, y, bins=[XY_ED, XY_ED], weights=w * vR)
+    if point_symmetric:
+        W2, _, _ = np.histogram2d(-x, -y, bins=[XY_ED, XY_ED], weights=w)
+        V2, _, _ = np.histogram2d(-x, -y, bins=[XY_ED, XY_ED], weights=w * vR)
+        W, V = W + W2, V + V2
+    return np.where(W > 0, V / np.where(W > 0, W, 1.0), np.nan), W
+
+
 def vr_quadrupole(x, y, z, vx, vy, w, vphi_sign):
     """V_2 amplitude and phase (in the sense of rotation) of <v_R> per ring, in the plane."""
     R = np.hypot(x, y)
@@ -166,13 +216,15 @@ Lz = np.sum(ms * (xb * vyb - yb * vxb))
 sgn_nb = np.sign(Lz)
 print('N-body: %d stars; sense of rotation in the bar frame: %s' % (len(ms), 'anticlockwise' if sgn_nb > 0 else 'clockwise'))
 V2, ph2 = vr_quadrupole(xb, yb, w[:, 2], vxb, vyb, ms, sgn_nb)
+vRmap, Wmap = vr_map(xb, yb, w[:, 2], vxb, vyb, ms)
+Nmap, _, _ = np.histogram2d(xb[np.abs(w[:, 2]) < A.zmax], yb[np.abs(w[:, 2]) < A.zmax], bins=[XY_ED, XY_ED])
 pot = agama.Potential(type='CylSpline', particles=(np.column_stack([xb, yb, w[:, 2]]), ms),
                       symmetry='bisymmetric', mmax=6, gridSizeR=60, gridSizez=40,
                       Rmin=0.05, Rmax=80.0, zmin=0.02, zmax=40.0)
 RR, PP = np.meshgrid(R_C, PH, indexing='ij')
 Phi = pot.potential(np.column_stack([(RR * np.cos(PP)).ravel(), (RR * np.sin(PP)).ravel(), 0 * RR.ravel()])).reshape(RR.shape)
 P2, pph = m2(Phi)
-out['N-body'] = dict(Phi2=P2, V2=V2, phV2=ph2)
+out['N-body'] = dict(Phi2=P2, V2=V2, phV2=ph2, vRmap=vRmap, Wmap=Wmap, Nmap=Nmap)
 del w, xb, yb, vxb, vyb, pot
 print('   done (peak RSS %.1f GB)' % _rss(), flush=True)
 
@@ -229,7 +281,17 @@ for lab, th in POINTS.items():
     del y
     Lzm = np.sum(Wpt[keep] * (x_ * vy_ - y_ * vx_))
     V2m, ph2m = vr_quadrupole(x_, y_, z_, vx_, vy_, Wpt[keep], np.sign(Lzm))
-    out[lab] = dict(Phi2=P2m, V2=V2m, phV2=ph2m)
+    vRm, Wm = vr_map(x_, y_, z_, vx_, vy_, Wpt[keep], point_symmetric=True)
+    # how many distinct orbits reach each pixel: the map's own shot noise
+    oid = np.repeat(np.arange(len(wts)), dt.shape[1])[keep]
+    sel = (np.abs(z_) < A.zmax) & (wts[oid] > 0)
+    ix = np.clip(np.digitize(x_[sel], XY_ED) - 1, 0, len(XY_ED) - 2)
+    iy = np.clip(np.digitize(y_[sel], XY_ED) - 1, 0, len(XY_ED) - 2)
+    pix = ix * (len(XY_ED) - 1) + iy
+    u_ = np.unique(np.stack([pix, oid[sel]]), axis=1)
+    Nm = np.bincount(u_[0], minlength=(len(XY_ED) - 1) ** 2).reshape(len(XY_ED) - 1, -1).astype(float)
+    Nm = Nm + Nm[::-1, ::-1]                                    # the point-symmetric image
+    out[lab] = dict(Phi2=P2m, V2=V2m, phV2=ph2m, vRmap=vRm, Wmap=Wm, Nmap=Nm)
     print('%s: L_bar %.2f, model M_* %.3e, rotation %s, %d of %d orbits carry weight (%.0f s, peak RSS %.1f GB)'
           % (lab, 10 ** th[5], Ms, 'anticlockwise' if Lzm > 0 else 'clockwise', int((wts > 0).sum()),
              len(wts), time.time() - t0, _rss()), flush=True)
@@ -243,6 +305,6 @@ for i, R in enumerate(R_C):
           % (R, out['N-body']['Phi2'][i], out['best fit']['Phi2'][i], out['truth']['Phi2'][i],
              out['N-body']['V2'][i], out['N-body']['phV2'][i], out['best fit']['V2'][i], out['best fit']['phV2'][i],
              out['truth']['V2'][i], out['truth']['phV2'][i]))
-np.savez(NPZ, R=R_C,
+np.savez(NPZ, R=R_C, XY_ED=XY_ED,
          **{'%s_%s' % (k.replace(' ', '_'), q): v for k, d in out.items() for q, v in d.items()})
 print('\npeak RSS %.1f GB' % _rss())

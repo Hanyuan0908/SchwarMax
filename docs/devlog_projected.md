@@ -227,3 +227,8 @@ Append-only. History before 2026-10-20 is in the PHANGS workspace's `COLLAB_PROG
     N-body's stars even to a stronger bar.
   - The LOS kinematics only weakly constrain the face-on v_R. The h1 χ² improved slightly with a
     longer bar (−19 to −27).
+- Face-on ⟨v_R⟩ maps (`figures/vR_faceon_maps.png`, `compare_bar_quadrupole.py --plot-only`): all three
+  show the same four-lobed bar quadrupole with the same orientation.
+  - N-body: broad lobes centred ~3 kpc from the centre, reaching ~5 kpc, ±20–25 km/s.
+  - Best fit: the same pattern SHRUNK, lobes centred ~2 kpc, confined inside ~3.5 kpc, ±15–20 km/s.
+  - Truth: lobes reach about the N-body's size but are narrower and elongated along the bar.
